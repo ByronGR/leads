@@ -53,6 +53,14 @@ function render(tpl: string | null | undefined, l: Lead) {
   };
   return (tpl || "").replace(/\{(\w+)\}/g, (_m, k) => (k in map ? map[k] : `{${k}}`));
 }
+// Strip the trailing sign-off (salutation + name + Nearwork) so the copied message
+// doesn't duplicate the rep's own Outlook signature.
+function stripSignature(body: string): string {
+  if (!body) return body;
+  return body
+    .replace(/\n+\s*(best regards|best|thanks|thank you|cheers|regards|warm regards|sincerely|talk soon|wishing you)[,!.]?\s*\n[\s\S]*$/i, "")
+    .trimEnd();
+}
 function messageFor(l: Lead): { label: string; subject?: string; body?: string; note?: string } {
   if (["Replied", "Deal", "Won"].includes(l.status)) return { label: "Replied", note: "This lead replied — continue the conversation in your inbox." };
   if (l.status === "No") return { label: "Not interested", note: "Marked not interested — no further outreach." };
@@ -61,12 +69,12 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
   // but ONLY when it has a body — otherwise fall back to the full Sprint template so
   // the message is never blank.
   if (idx === 0 && l.gen_body) {
-    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: l.gen_body };
+    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
   }
   const steps = (l.steps && l.steps.length) ? l.steps : [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
   if (idx >= steps.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
   const step = steps[idx];
-  return { label: idx === 0 ? "First email" : `Follow-up ${idx}`, subject: render(step.subject, l), body: render(step.body, l) };
+  return { label: idx === 0 ? "First email" : `Follow-up ${idx}`, subject: render(step.subject, l), body: stripSignature(render(step.body, l)) };
 }
 
 /* ---------------- atoms ---------------- */
@@ -145,14 +153,17 @@ function Composer({ l }: { l: Lead }) {
         </div>
         <div className="field">
           <div className="k"><span>Subject</span><button className="btn sm ghost" onClick={() => copy(msg.subject || "", "s")}>{copied === "s" ? "✓" : "Copy"}</button></div>
-          <div className="subject">{msg.subject}</div>
+          <div className="subject copyable" title="Click to copy" onClick={() => copy(msg.subject || "", "s")}>{msg.subject}</div>
         </div>
         <div className="field">
           <div className="k"><span>Message</span><button className="btn sm ghost" onClick={() => copy(msg.body || "", "b")}>{copied === "b" ? "✓" : "Copy"}</button></div>
-          <div className="body">{msg.body}</div>
+          <div className="body copyable" title="Click to copy" onClick={() => copy(msg.body || "", "b")}>{msg.body}</div>
         </div>
       </div>
-      <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 10 }}>Personalize the opening line if you have a specific detail.</div>
+      <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 10 }}>
+        {copied === "s" || copied === "b" || copied === "all" ? <span style={{ color: "var(--accent)", fontWeight: 700 }}>Copied ✓ — paste into your email. Your Outlook signature is added automatically.</span>
+          : "Click the subject or message to copy it. Your Outlook signature is added automatically — no need to sign off here."}
+      </div>
     </>
   );
 }
