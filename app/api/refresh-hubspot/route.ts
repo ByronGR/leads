@@ -8,7 +8,23 @@ export const maxDuration = 60;
 
 const BASE = "https://api.hubapi.com";
 
-type Hit = { touches: number; last: string | null };
+// Which rep each mailbox / from-address belongs to — used to set the OWNER to
+// whoever actually sent the most recent email (they do the follow-up).
+const REP_NAME: Record<string, string> = {
+  "byron.giraldo@nearwork.co": "Byron",
+  "stephany.picos@nearwork.co": "Stephany",
+  "nany.guerra@nearwork.co": "Nany",
+  "daniela.jessurum@nearwork.co": "Dani",
+};
+
+type Hit = { touches: number; last: string | null; sender?: string | null };
+
+function bump(map: Record<string, Hit>, key: string, ts: string | null, sender: string | null) {
+  const h = map[key] || { touches: 0, last: null, sender: null };
+  h.touches++;
+  if (!h.last || (ts && ts > h.last)) { h.last = ts; if (sender) h.sender = sender; }
+  map[key] = h;
+}
 
 // Read the ACTUAL outbound emails logged in HubSpot (the reliable "did we send
 // this" signal — num_contacted_notes doesn't update reliably for logged 1:1
@@ -21,7 +37,7 @@ async function sentEmailMaps(token: string) {
   for (let page = 0; page < 10; page++) {
     const body: any = {
       filterGroups: [{ filters: [{ propertyName: "hs_email_direction", operator: "IN", values: ["EMAIL", "FORWARDED_EMAIL"] }] }],
-      properties: ["hs_email_to_email", "hs_timestamp"],
+      properties: ["hs_email_to_email", "hs_email_from_email", "hs_timestamp"],
       sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
       limit: 100,
     };
@@ -36,14 +52,13 @@ async function sentEmailMaps(token: string) {
     for (const r of data.results || []) {
       const p = r.properties || {};
       const ts: string | null = p.hs_timestamp || null;
+      const sender = REP_NAME[String(p.hs_email_from_email || "").toLowerCase()] || null;
       const recips = String(p.hs_email_to_email || "").split(/[;,]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
       for (const addr of recips) {
         const dom = addr.split("@")[1];
         if (!dom) continue;
-        const be = byEmail[addr] || { touches: 0, last: null };
-        be.touches++; if (!be.last || (ts && ts > be.last)) be.last = ts; byEmail[addr] = be;
-        const bd = byDomain[dom] || { touches: 0, last: null };
-        bd.touches++; if (!bd.last || (ts && ts > bd.last)) bd.last = ts; byDomain[dom] = bd;
+        bump(byEmail, addr, ts, sender);
+        bump(byDomain, dom, ts, sender);
       }
     }
     after = data.paging?.next?.after;
@@ -81,6 +96,7 @@ async function sentFolderMaps(token: string) {
   const byDomain: Record<string, Hit> = {};
   let ok = false;
   for (const rep of REP_MAILBOXES) {
+    const sender = REP_NAME[rep] || null; // the mailbox owner = who sent it
     let url: string | undefined =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(rep)}/mailFolders/SentItems/messages` +
       `?$top=100&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc`;
@@ -96,10 +112,8 @@ async function sentFolderMaps(token: string) {
           const addr = (r.emailAddress?.address || "").toLowerCase();
           const dom = addr.split("@")[1];
           if (!dom || dom === "nearwork.co") continue; // skip internal
-          const be = byEmail[addr] || { touches: 0, last: null };
-          be.touches++; if (!be.last || (ts && ts > be.last)) be.last = ts; byEmail[addr] = be;
-          const bd = byDomain[dom] || { touches: 0, last: null };
-          bd.touches++; if (!bd.last || (ts && ts > bd.last)) bd.last = ts; byDomain[dom] = bd;
+          bump(byEmail, addr, ts, sender);
+          bump(byDomain, dom, ts, sender);
         }
       }
       url = data["@odata.nextLink"];
@@ -111,8 +125,10 @@ async function sentFolderMaps(token: string) {
 function mergeInto(base: Record<string, Hit>, add: Record<string, Hit>) {
   for (const [k, v] of Object.entries(add)) {
     const b = base[k];
-    if (!b || v.touches > b.touches) base[k] = { touches: Math.max(v.touches, b?.touches || 0), last: (b?.last && b.last > (v.last || "")) ? b.last : v.last };
-    else if (v.last && (!b.last || v.last > b.last)) b.last = v.last;
+    if (!b) { base[k] = { touches: v.touches, last: v.last, sender: v.sender }; continue; }
+    b.touches = Math.max(b.touches, v.touches);
+    // keep the sender of whichever source has the more recent send
+    if (v.last && (!b.last || v.last > b.last)) { b.last = v.last; b.sender = v.sender; }
   }
 }
 
@@ -132,8 +148,8 @@ export async function POST(req: Request) {
     // Only the COLD sequence (New / Sent). Once a lead replies (Replied/Deal/Won)
     // it's a live conversation — those emails are NOT follow-ups, so we freeze the
     // count and never touch it here. 'No' is excluded too.
-    const leads = await q<{ id: number; company: string; email: string | null; sent_count: number; status: string; status_locked: boolean }>(
-      `select id, company, email, sent_count, status, status_locked
+    const leads = await q<{ id: number; company: string; email: string | null; sent_count: number; status: string; status_locked: boolean; owner: string | null; owner_locked: boolean }>(
+      `select id, company, email, sent_count, status, status_locked, owner, owner_locked
        from leads
        where status in ('New','Sent')`
     );
@@ -158,7 +174,7 @@ export async function POST(req: Request) {
     }
 
     const slugOf = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    let updated = 0;
+    let updated = 0, reassigned = 0;
     for (const l of leads) {
       const em = (l.email || "").toLowerCase();
       let hit: Hit = { touches: 0, last: null };
@@ -169,32 +185,37 @@ export async function POST(req: Request) {
         // Exact contact = accurate follow-up count; otherwise a company-level send
         // still means "contacted" (count it as 1 touch).
         if (exact && exact.touches > 0) hit = exact;
-        else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last };
+        else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last, sender: domain.sender };
       } else {
         // No email on the lead — match by company name against the domains we
         // actually emailed (e.g. "RF-SMART" ↔ rfsmart.com). Exact slug match only.
         const slug = slugOf(l.company);
         if (slug.length >= 4) {
           for (const [dom, h] of Object.entries(byDomain)) {
-            if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last }; break; }
+            if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last, sender: h.sender }; break; }
           }
         }
       }
       if (hit.touches === 0) continue;
 
       const promote = !l.status_locked && l.status === "New";
+      // OWNER = whoever actually sent the most recent email. Skip if a rep manually
+      // reassigned this lead (owner_locked) or the sender is already the owner.
+      const newOwner = (hit.sender && !l.owner_locked && hit.sender !== l.owner) ? hit.sender : null;
+      if (newOwner) reassigned++;
       await q(
         `update leads set
            sent_count    = greatest(sent_count, $2),
            status        = case when $3 then 'Sent' else status end,
            last_activity = greatest(last_activity, $4::date),
+           owner         = coalesce($5, owner),
            updated_at    = now()
          where id = $1`,
-        [l.id, hit.touches, promote, hit.last ? String(hit.last).slice(0, 10) : null]
+        [l.id, hit.touches, promote, hit.last ? String(hit.last).slice(0, 10) : null, newOwner]
       );
       updated++;
     }
-    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, sentFolders, hubspot: !!token });
+    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, reassigned, sentFolders, hubspot: !!token });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
