@@ -11,7 +11,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const { leads, sprints } = await req.json();
+    const { leads, sprints, delete: toDelete } = await req.json();
+    let deleted = 0;
+    for (const name of toDelete || []) {
+      if (!name) continue;
+      await q(`delete from leads where company = $1`, [name]);
+      deleted++;
+    }
     let n = 0;
     for (const l of leads || []) {
       if (!l.company) continue;
@@ -69,7 +75,7 @@ export async function POST(req: Request) {
       );
       s++;
     }
-    return NextResponse.json({ ok: true, ingested: n, sprints: s });
+    return NextResponse.json({ ok: true, ingested: n, sprints: s, deleted });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
