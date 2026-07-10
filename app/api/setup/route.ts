@@ -45,6 +45,10 @@ create table if not exists sprints (
   updated_at timestamptz default now()
 );
 create index if not exists idx_sprints_start on sprints(start_date);
+-- Ordered message sequence for a sprint: [{subject, body}, ...] where index 0 is
+-- the first email, index 1 is follow-up 1, etc. The app shows steps[sent_count]
+-- so the rep always gets the NEXT message to send, not the one already sent.
+alter table sprints add column if not exists steps jsonb;
 `;
 
 export async function GET(req: Request) {

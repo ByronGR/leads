@@ -52,15 +52,17 @@ export async function POST(req: Request) {
     for (const sp of sprints || []) {
       if (!sp.name || !sp.start_date) continue;
       await q(
-        `insert into sprints (name, focus, start_date, subject_tpl, body_tpl)
-         values ($1,$2,$3,$4,$5)
+        `insert into sprints (name, focus, start_date, subject_tpl, body_tpl, steps)
+         values ($1,$2,$3,$4,$5,$6::jsonb)
          on conflict (name) do update set
            focus       = excluded.focus,
            start_date  = excluded.start_date,
            subject_tpl = excluded.subject_tpl,
            body_tpl    = excluded.body_tpl,
+           steps       = excluded.steps,
            updated_at  = now()`,
-        [sp.name, sp.focus ?? null, sp.start_date, sp.subject_tpl ?? null, sp.body_tpl ?? null]
+        [sp.name, sp.focus ?? null, sp.start_date, sp.subject_tpl ?? null, sp.body_tpl ?? null,
+         sp.steps ? JSON.stringify(sp.steps) : null]
       );
       s++;
     }

@@ -12,7 +12,7 @@ export async function leadsWithSprint() {
             s.name as sprint_name, s.subject_tpl, s.body_tpl
      from leads l
      left join lateral (
-       select name, subject_tpl, body_tpl
+       select name, subject_tpl, body_tpl, steps
        from sprints
        where start_date <= coalesce(l.lead_date, l.last_activity, current_date)
        order by start_date desc
