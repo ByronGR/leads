@@ -49,6 +49,10 @@ create index if not exists idx_sprints_start on sprints(start_date);
 -- the first email, index 1 is follow-up 1, etc. The app shows steps[sent_count]
 -- so the rep always gets the NEXT message to send, not the one already sent.
 alter table sprints add column if not exists steps jsonb;
+-- The routine's personalized first-touch email (what the rep actually sends);
+-- the Sprint template is the fallback / drives follow-ups.
+alter table leads add column if not exists gen_subject text;
+alter table leads add column if not exists gen_body text;
 `;
 
 export async function GET(req: Request) {

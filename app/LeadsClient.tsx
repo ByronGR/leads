@@ -11,6 +11,7 @@ type Lead = {
   first_name?: string | null; contact_name?: string | null; lead_date?: string | null;
   sprint_name?: string | null; subject_tpl?: string | null; body_tpl?: string | null;
   steps?: { subject?: string; body?: string }[] | null;
+  gen_subject?: string | null; gen_body?: string | null;
 };
 type Sprint = {
   id: number; name: string; focus: string | null; start_date: string;
@@ -55,8 +56,13 @@ function render(tpl: string | null | undefined, l: Lead) {
 function messageFor(l: Lead): { label: string; subject?: string; body?: string; note?: string } {
   if (["Replied", "Deal", "Won"].includes(l.status)) return { label: "Replied", note: "This lead replied — continue the conversation in your inbox." };
   if (l.status === "No") return { label: "Not interested", note: "Marked not interested — no further outreach." };
-  const steps = (l.steps && l.steps.length) ? l.steps : [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
   const idx = l.sent_count || 0;
+  // First touch: show the routine's PERSONALIZED email (what the rep actually sends),
+  // not the generic Sprint template. Falls back to the template if none exists.
+  if (idx === 0 && (l.gen_subject || l.gen_body)) {
+    return { label: "First email", subject: l.gen_subject || "", body: l.gen_body || "" };
+  }
+  const steps = (l.steps && l.steps.length) ? l.steps : [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
   if (idx >= steps.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
   const step = steps[idx];
   return { label: idx === 0 ? "First email" : `Follow-up ${idx}`, subject: render(step.subject, l), body: render(step.body, l) };

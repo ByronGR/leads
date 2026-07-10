@@ -132,10 +132,10 @@ export async function POST(req: Request) {
     // Only the COLD sequence (New / Sent). Once a lead replies (Replied/Deal/Won)
     // it's a live conversation — those emails are NOT follow-ups, so we freeze the
     // count and never touch it here. 'No' is excluded too.
-    const leads = await q<{ id: number; email: string; sent_count: number; status: string; status_locked: boolean }>(
-      `select id, email, sent_count, status, status_locked
+    const leads = await q<{ id: number; company: string; email: string | null; sent_count: number; status: string; status_locked: boolean }>(
+      `select id, company, email, sent_count, status, status_locked
        from leads
-       where email is not null and email <> '' and status in ('New','Sent')`
+       where status in ('New','Sent')`
     );
     if (!leads.length) return NextResponse.json({ ok: true, checked: 0, updated: 0 });
 
@@ -157,17 +157,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No source configured: set HUBSPOT_TOKEN and/or Microsoft Graph env vars in Vercel", updated: 0 }, { status: 200 });
     }
 
+    const slugOf = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     let updated = 0;
     for (const l of leads) {
-      const em = l.email.toLowerCase();
-      const dom = (em.split("@")[1] || "");
-      const exact = byEmail[em];
-      const domain = byDomain[dom];
-      // Exact contact = accurate follow-up count; otherwise a company-level send
-      // still means "contacted" (count it as 1 touch).
+      const em = (l.email || "").toLowerCase();
       let hit: Hit = { touches: 0, last: null };
-      if (exact && exact.touches > 0) hit = exact;
-      else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last };
+      if (em) {
+        const dom = em.split("@")[1] || "";
+        const exact = byEmail[em];
+        const domain = byDomain[dom];
+        // Exact contact = accurate follow-up count; otherwise a company-level send
+        // still means "contacted" (count it as 1 touch).
+        if (exact && exact.touches > 0) hit = exact;
+        else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last };
+      } else {
+        // No email on the lead — match by company name against the domains we
+        // actually emailed (e.g. "RF-SMART" ↔ rfsmart.com). Exact slug match only.
+        const slug = slugOf(l.company);
+        if (slug.length >= 4) {
+          for (const [dom, h] of Object.entries(byDomain)) {
+            if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last }; break; }
+          }
+        }
+      }
       if (hit.touches === 0) continue;
 
       const promote = !l.status_locked && l.status === "New";
