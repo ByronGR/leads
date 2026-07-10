@@ -12,9 +12,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
+    const all = await leadsWithSprint();
+    const filter = (new URL(req.url).searchParams.get("company") || "").toLowerCase();
+    const compact = all
+      .filter((l: any) => !filter || (l.company || "").toLowerCase().includes(filter))
+      .map((l: any) => ({ company: l.company, owner: l.owner, status: l.status, sent_count: l.sent_count, last_activity: l.last_activity, email: l.email }));
     const sprints = await sprintPerformance();
-    const leads = (await leadsWithSprint()).slice(0, 5);
-    return NextResponse.json({ sprints, sample_leads: leads });
+    return NextResponse.json({ total: all.length, sprints, leads: compact });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
