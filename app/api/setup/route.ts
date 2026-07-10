@@ -20,6 +20,10 @@ create table if not exists activity_log (
 );
 create index if not exists idx_leads_owner on leads(owner);
 create index if not exists idx_leads_status on leads(status);
+-- A rep's manual change in the app locks that field so the daily HubSpot sync
+-- won't overwrite it. Otherwise HubSpot is the source of truth for owner/status.
+alter table leads add column if not exists owner_locked boolean default false;
+alter table leads add column if not exists status_locked boolean default false;
 `;
 
 export async function GET(req: Request) {

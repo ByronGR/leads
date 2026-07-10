@@ -3,7 +3,9 @@ import { q } from "@/lib/db";
 
 // POST /api/ingest — the daily routine pushes new/updated leads here.
 // Header: x-ingest-secret. Body: { leads: [...] }.
-// Upsert by company: NEVER overwrites a rep's status or a non-empty owner.
+// Upsert by company. HubSpot is the source of truth for owner + status (whoever
+// actually sent the last email owns the lead), EXCEPT when a rep changed that
+// field in the app — a manual change sets owner_locked/status_locked and is kept.
 export async function POST(req: Request) {
   if (req.headers.get("x-ingest-secret") !== process.env.INGEST_SECRET) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -18,7 +20,10 @@ export async function POST(req: Request) {
            (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity)
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          on conflict (company) do update set
-           owner            = coalesce(nullif(leads.owner, ''), excluded.owner),
+           owner            = case when leads.owner_locked then leads.owner
+                                   else coalesce(nullif(excluded.owner, ''), leads.owner) end,
+           status           = case when leads.status_locked then leads.status
+                                   else coalesce(nullif(excluded.status, ''), leads.status) end,
            role             = excluded.role,
            email            = coalesce(nullif(leads.email, ''), excluded.email),
            email_confidence = excluded.email_confidence,

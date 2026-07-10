@@ -16,6 +16,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         vals.push(body[f]);
       }
     }
+    // A manual owner/status change locks that field from the daily HubSpot sync.
+    if ("owner" in body) sets.push(`owner_locked = true`);
+    if ("status" in body) sets.push(`status_locked = true`);
     if (!sets.length) return NextResponse.json({ ok: false, error: "no fields" }, { status: 400 });
     vals.push(params.id);
     await q(`update leads set ${sets.join(", ")}, updated_at = now() where id = $${i}`, vals);

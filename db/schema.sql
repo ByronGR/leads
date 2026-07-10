@@ -15,6 +15,8 @@ create table if not exists leads (
   ab_variant      text default 'A',
   last_activity   date,
   source          text default 'daily-routine',
+  owner_locked    boolean default false, -- rep reassigned in-app; keep over sync
+  status_locked   boolean default false, -- rep set status in-app; keep over sync
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
 );
