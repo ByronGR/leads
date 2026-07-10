@@ -58,9 +58,10 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
   if (l.status === "No") return { label: "Not interested", note: "Marked not interested — no further outreach." };
   const idx = l.sent_count || 0;
   // First touch: show the routine's PERSONALIZED email (what the rep actually sends),
-  // not the generic Sprint template. Falls back to the template if none exists.
-  if (idx === 0 && (l.gen_subject || l.gen_body)) {
-    return { label: "First email", subject: l.gen_subject || "", body: l.gen_body || "" };
+  // but ONLY when it has a body — otherwise fall back to the full Sprint template so
+  // the message is never blank.
+  if (idx === 0 && l.gen_body) {
+    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: l.gen_body };
   }
   const steps = (l.steps && l.steps.length) ? l.steps : [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
   if (idx >= steps.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
