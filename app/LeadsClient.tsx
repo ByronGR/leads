@@ -113,6 +113,13 @@ export default function LeadsClient() {
     return () => clearInterval(id);
   }, []);
 
+  // The Refresh button pulls the live "contacted" signal from HubSpot, then reloads.
+  async function refresh() {
+    setRefreshing(true);
+    try { await fetch("/api/refresh-hubspot", { method: "POST" }); } catch { /* ignore */ }
+    await load(true);
+  }
+
   // Remember the last owner filter this person chose (so admins can pin "All").
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("nw_owner") : null;
@@ -198,9 +205,9 @@ export default function LeadsClient() {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               className="act"
-              onClick={() => load(true)}
+              onClick={refresh}
               disabled={refreshing}
-              title="Reload the latest data (team updates + the most recent HubSpot sync)"
+              title="Pull the latest 'contacted' status from HubSpot and reload"
               style={{ fontWeight: 700 }}
             >
               {refreshing ? "Refreshing…" : "↻ Refresh"}
