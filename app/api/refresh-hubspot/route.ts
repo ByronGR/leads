@@ -52,10 +52,75 @@ async function sentEmailMaps(token: string) {
   return { byEmail, byDomain };
 }
 
-// POST /api/refresh-hubspot — pull the contacted/pending signal from HubSpot now
-// and update the DB. Auth: a signed-in session (the Refresh button) OR ?secret=
-// INGEST_SECRET (for automation). Never lowers a count and never overrides a rep's
-// manual/locked status; only promotes New -> Sent when HubSpot shows an email went out.
+// Reps' mailboxes we read Sent Items from (the source of truth for "we emailed
+// this", independent of whether HubSpot logged it).
+const REP_MAILBOXES = [
+  "byron.giraldo@nearwork.co",
+  "stephany.picos@nearwork.co",
+  "nany.guerra@nearwork.co",
+  "daniela.jessurum@nearwork.co",
+];
+
+async function graphToken(): Promise<string | null> {
+  const tenant = process.env.MS_TENANT_ID, id = process.env.MS_CLIENT_ID, secret = process.env.MS_CLIENT_SECRET;
+  if (!tenant || !id || !secret) return null;
+  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: id, client_secret: secret, scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials" }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()).access_token || null;
+}
+
+// Read each rep's Outlook Sent Items and build recipient -> {count,last} maps.
+// Catches EVERY email sent, even ones HubSpot never logged. Returns null if Graph
+// isn't configured or lacks Mail.Read (so the caller falls back to HubSpot only).
+async function sentFolderMaps(token: string) {
+  const byEmail: Record<string, Hit> = {};
+  const byDomain: Record<string, Hit> = {};
+  let ok = false;
+  for (const rep of REP_MAILBOXES) {
+    let url: string | undefined =
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(rep)}/mailFolders/SentItems/messages` +
+      `?$top=100&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc`;
+    for (let page = 0; page < 3 && url; page++) {
+      const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) break;
+      ok = true;
+      const data: any = await res.json();
+      for (const m of data.value || []) {
+        const ts: string | null = m.sentDateTime || null;
+        const recips = [...(m.toRecipients || []), ...(m.ccRecipients || [])];
+        for (const r of recips) {
+          const addr = (r.emailAddress?.address || "").toLowerCase();
+          const dom = addr.split("@")[1];
+          if (!dom || dom === "nearwork.co") continue; // skip internal
+          const be = byEmail[addr] || { touches: 0, last: null };
+          be.touches++; if (!be.last || (ts && ts > be.last)) be.last = ts; byEmail[addr] = be;
+          const bd = byDomain[dom] || { touches: 0, last: null };
+          bd.touches++; if (!bd.last || (ts && ts > bd.last)) bd.last = ts; byDomain[dom] = bd;
+        }
+      }
+      url = data["@odata.nextLink"];
+    }
+  }
+  return ok ? { byEmail, byDomain } : null;
+}
+
+function mergeInto(base: Record<string, Hit>, add: Record<string, Hit>) {
+  for (const [k, v] of Object.entries(add)) {
+    const b = base[k];
+    if (!b || v.touches > b.touches) base[k] = { touches: Math.max(v.touches, b?.touches || 0), last: (b?.last && b.last > (v.last || "")) ? b.last : v.last };
+    else if (v.last && (!b.last || v.last > b.last)) b.last = v.last;
+  }
+}
+
+// POST /api/refresh-hubspot — pull the contacted/pending signal now and update the
+// DB. Reads BOTH HubSpot's logged emails AND each rep's Outlook Sent folder (via
+// Microsoft Graph), so a send counts even if HubSpot never logged it. Auth: a
+// signed-in session (Refresh button) OR ?secret=INGEST_SECRET. Never lowers a count
+// and never overrides a rep's manual/locked status; only promotes New -> Sent.
 export async function POST(req: Request) {
   const secret = new URL(req.url).searchParams.get("secret");
   const session = await getServerSession(authOptions);
@@ -63,9 +128,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const token = process.env.HUBSPOT_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: "HUBSPOT_TOKEN not set in Vercel", updated: 0 }, { status: 200 });
-  }
   try {
     const leads = await q<{ id: number; email: string; sent_count: number; status: string; status_locked: boolean }>(
       `select id, email, sent_count, status, status_locked
@@ -74,7 +136,23 @@ export async function POST(req: Request) {
     );
     if (!leads.length) return NextResponse.json({ ok: true, checked: 0, updated: 0 });
 
-    const { byEmail, byDomain } = await sentEmailMaps(token);
+    // Source 1: emails logged in HubSpot.
+    const byEmail: Record<string, Hit> = {};
+    const byDomain: Record<string, Hit> = {};
+    if (token) {
+      const hs = await sentEmailMaps(token);
+      mergeInto(byEmail, hs.byEmail); mergeInto(byDomain, hs.byDomain);
+    }
+    // Source 2: each rep's actual Outlook Sent folder (catches everything).
+    let sentFolders = false;
+    const gTok = await graphToken();
+    if (gTok) {
+      const sf = await sentFolderMaps(gTok);
+      if (sf) { sentFolders = true; mergeInto(byEmail, sf.byEmail); mergeInto(byDomain, sf.byDomain); }
+    }
+    if (!token && !sentFolders) {
+      return NextResponse.json({ error: "No source configured: set HUBSPOT_TOKEN and/or Microsoft Graph env vars in Vercel", updated: 0 }, { status: 200 });
+    }
 
     let updated = 0;
     for (const l of leads) {
@@ -101,7 +179,7 @@ export async function POST(req: Request) {
       );
       updated++;
     }
-    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated });
+    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, sentFolders, hubspot: !!token });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
