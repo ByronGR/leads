@@ -57,8 +57,11 @@ function render(tpl: string | null | undefined, l: Lead) {
 // doesn't duplicate the rep's own Outlook signature.
 function stripSignature(body: string): string {
   if (!body) return body;
+  // Cut from the closing salutation line (a blank line, then "Best regards,"/"Best,"/
+  // "Wishing you…," etc.) through the name + "Nearwork". Anchored on real closings so
+  // it won't clip body text like "Best of all, …".
   return body
-    .replace(/\n+\s*(best regards|best|thanks|thank you|cheers|regards|warm regards|sincerely|talk soon|wishing you)[,!.]?\s*\n[\s\S]*$/i, "")
+    .replace(/\n\s*\n[ \t]*(?:best regards|best|thanks|thank you|cheers|warm regards|regards|sincerely|talk soon|wishing you[^\n]*)[,.!]?[ \t]*\n[\s\S]*$/i, "")
     .trimEnd();
 }
 function messageFor(l: Lead): { label: string; subject?: string; body?: string; note?: string } {
