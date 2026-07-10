@@ -80,6 +80,8 @@ export default function LeadsClient() {
   const [openMsg, setOpenMsg] = useState<number | null>(null);
   const [copied, setCopied] = useState<string>("");
   const [ownerTouched, setOwnerTouched] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
 
   // Map the signed-in @nearwork.co user to their owner name so a rep lands on
   // their OWN action list. (Byron/admins can click "All" to see everyone.)
@@ -90,17 +92,26 @@ export default function LeadsClient() {
     "daniela.jessurum@nearwork.co": "Dani",
   };
 
-  async function load() {
-    setLoading(true);
-    const [lr, sr] = await Promise.all([
-      fetch("/api/leads", { cache: "no-store" }),
-      fetch("/api/sprints", { cache: "no-store" }),
-    ]);
-    setLeads(lr.ok ? await lr.json() : []);
-    setSprints(sr.ok ? await sr.json() : []);
-    setLoading(false);
+  async function load(silent = false) {
+    if (silent) setRefreshing(true); else setLoading(true);
+    try {
+      const [lr, sr] = await Promise.all([
+        fetch("/api/leads", { cache: "no-store" }),
+        fetch("/api/sprints", { cache: "no-store" }),
+      ]);
+      setLeads(lr.ok ? await lr.json() : []);
+      setSprints(sr.ok ? await sr.json() : []);
+      setUpdatedAt(Date.now());
+    } finally {
+      setLoading(false); setRefreshing(false);
+    }
   }
   useEffect(() => { load(); }, []);
+  // Auto-refresh from the database every 60s so team changes appear without a reload.
+  useEffect(() => {
+    const id = setInterval(() => load(true), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   // Remember the last owner filter this person chose (so admins can pin "All").
   useEffect(() => {
@@ -184,7 +195,22 @@ export default function LeadsClient() {
           <div className="sub">leads.nearwork.co — live pipeline. Changes save instantly for the whole team.</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div className="asof">{leads.filter((l) => l.status !== "No").length} active companies</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="act"
+              onClick={() => load(true)}
+              disabled={refreshing}
+              title="Reload the latest data (team updates + the most recent HubSpot sync)"
+              style={{ fontWeight: 700 }}
+            >
+              {refreshing ? "Refreshing…" : "↻ Refresh"}
+            </button>
+            {updatedAt > 0 && (
+              <span className="muted" title="When this page last loaded data from the database">
+                Updated {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
           {session?.user?.email && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
               <span className="muted">{session.user.email}</span>
