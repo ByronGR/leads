@@ -11,12 +11,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const { leads, sprints, delete: toDelete } = await req.json();
+    const { leads, sprints, delete: toDelete, reset: toReset } = await req.json();
     let deleted = 0;
     for (const name of toDelete || []) {
       if (!name) continue;
       await q(`delete from leads where company = $1`, [name]);
       deleted++;
+    }
+    // Un-mark: put a lead back to New and hand it to the sync/refresh again.
+    for (const name of toReset || []) {
+      if (!name) continue;
+      await q(`update leads set status='New', sent_count=0, status_locked=false, updated_at=now() where company=$1`, [name]);
     }
     let n = 0;
     for (const l of leads || []) {
