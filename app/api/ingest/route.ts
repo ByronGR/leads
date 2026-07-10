@@ -32,6 +32,8 @@ export async function POST(req: Request) {
                                    when leads.status = 'No' and leads.status_locked then 'No'
                                    when excluded.status in ('Replied','Deal','Won') then excluded.status
                                    when leads.status_locked then leads.status
+                                   -- never downgrade an already-contacted lead back to New
+                                   when excluded.status = 'New' and leads.status <> 'New' then leads.status
                                    else coalesce(nullif(excluded.status, ''), leads.status) end,
            role             = excluded.role,
            email            = coalesce(nullif(leads.email, ''), excluded.email),
