@@ -12,8 +12,10 @@ const BASE = "https://api.hubapi.com";
 // fast signal the Refresh button needs. Batch-reads up to 100 contacts per call,
 // so ~100 leads = 1-2 HubSpot calls (a few seconds). The heavier owner-attribution
 // + genuine-open/reply filtering stays on the once-daily Mac sync.
+type Hit = { touches: number; last: string | null };
+
 async function contactedByEmail(emails: string[], token: string) {
-  const out: Record<string, { touches: number; last: string | null }> = {};
+  const out: Record<string, Hit> = {};
   for (let i = 0; i < emails.length; i += 100) {
     const chunk = emails.slice(i, i + 100);
     const res = await fetch(`${BASE}/crm/v3/objects/contacts/batch/read`, {
@@ -36,6 +38,30 @@ async function contactedByEmail(emails: string[], token: string) {
     }
   }
   return out;
+}
+
+// Fallback for leads the exact-email match missed: search the whole company by
+// domain and take the most-contacted contact there — catches "emailed a different
+// person than the app guessed". One search per domain, so only run it on misses.
+async function contactedByDomain(domain: string, token: string): Promise<Hit> {
+  const res = await fetch(`${BASE}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "email", operator: "CONTAINS_TOKEN", value: `*@${domain}` }] }],
+      properties: ["email", "num_contacted_notes", "notes_last_contacted"],
+      limit: 100,
+    }),
+  });
+  const hit: Hit = { touches: 0, last: null };
+  if (!res.ok) return hit;
+  const data = await res.json();
+  for (const r of data.results || []) {
+    const p = r.properties || {};
+    const t = parseInt(p.num_contacted_notes || "0", 10) || 0;
+    if (t > hit.touches) { hit.touches = t; hit.last = p.notes_last_contacted || null; }
+  }
+  return hit;
 }
 
 // POST /api/refresh-hubspot — pull the contacted/pending signal from HubSpot now
@@ -62,10 +88,28 @@ export async function POST(req: Request) {
     if (!emails.length) return NextResponse.json({ ok: true, checked: 0, updated: 0 });
     const map = await contactedByEmail(emails, token);
 
-    let updated = 0;
+    // Domain fallback for leads the exact email didn't match (or matched 0 touches):
+    // catches emailing a different contact than the app's guessed address. Deduped
+    // by domain so it's a handful of extra searches, not one per lead.
+    const needDomain = new Set<string>();
     for (const l of leads) {
       const hit = map[l.email.toLowerCase()];
-      if (!hit) continue;
+      const domain = l.email.split("@")[1];
+      if (domain && (!hit || hit.touches === 0)) needDomain.add(domain.toLowerCase());
+    }
+    const byDomain: Record<string, Hit> = {};
+    for (const d of needDomain) byDomain[d] = await contactedByDomain(d, token);
+
+    let updated = 0;
+    let domainCatches = 0;
+    for (const l of leads) {
+      const emHit = map[l.email.toLowerCase()];
+      const domain = (l.email.split("@")[1] || "").toLowerCase();
+      const domHit = byDomain[domain];
+      // Take whichever source shows the most contact.
+      let hit = emHit || { touches: 0, last: null };
+      if (domHit && domHit.touches > hit.touches) { hit = domHit; if (emHit && emHit.touches === 0) domainCatches++; }
+      if (hit.touches === 0) continue;
       const promote = hit.touches > 0 && !l.status_locked && l.status === "New";
       await q(
         `update leads set
@@ -78,7 +122,7 @@ export async function POST(req: Request) {
       );
       updated++;
     }
-    return NextResponse.json({ ok: true, checked: leads.length, matched: Object.keys(map).length, updated });
+    return NextResponse.json({ ok: true, checked: leads.length, matched: Object.keys(map).length, updated, domainCatches });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
