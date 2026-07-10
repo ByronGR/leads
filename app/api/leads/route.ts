@@ -8,7 +8,8 @@ export async function GET() {
   try {
     const rows = await q(
       `select id, company, owner, role, email, email_confidence, status,
-              sent_count, ab_variant, why_now, job_url, last_activity
+              sent_count, ab_variant, why_now, job_url, last_activity,
+              opened, opened_at
        from leads
        order by (status = 'New'), (status in ('Sent')), company`
     );
