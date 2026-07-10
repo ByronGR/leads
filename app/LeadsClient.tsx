@@ -216,7 +216,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
 function RowCard({ l, onOpen, onAction }: { l: Lead; onOpen: (l: Lead) => void; onAction: Act }) {
   const a = actionFor(l);
   return (
-    <div className={"rowcard" + (l.status === "No" ? " dim" : "")}>
+    <div className={"rowcard" + (l.status === "No" ? " dim" : "")} onClick={() => onOpen(l)} style={{ cursor: "pointer" }}>
       <div className="co-cell">
         <div className="co">{l.company}</div>
         <div className="co-sub"><StageBadge l={l} />{l.opened && <span className="opened">👁</span>}</div>
@@ -228,7 +228,7 @@ function RowCard({ l, onOpen, onAction }: { l: Lead; onOpen: (l: Lead) => void; 
         {l.email ? <><div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{l.email}</div><div className="conf">{l.email_confidence}</div></>
           : <span style={{ color: "var(--tx-3)" }}>no email yet</span>}
       </div>
-      <div className="actions-cell">
+      <div className="actions-cell" onClick={(e) => e.stopPropagation()}>
         {a
           ? <button className={"btn primary sm" + (a.kind === "follow" ? " btn-f" + followLevel(l) : "")} onClick={() => onOpen(l)}>{MailIcon}{a.label}</button>
           : <button className="btn sm" onClick={() => onOpen(l)}>{MailIcon}View</button>}
