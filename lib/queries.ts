@@ -32,14 +32,14 @@ export async function sprintPerformance() {
        from leads l
        where l.status <> 'No'
      )
-     select s.id, s.name, s.focus, s.start_date, s.subject_tpl, s.body_tpl,
+     select s.id, s.name, s.focus, s.start_date, s.subject_tpl, s.body_tpl, s.steps,
             count(ls.id)::int as leads,
             count(*) filter (where ls.sent_count > 0
                                 or ls.status in ('Sent','Replied','Deal','Won'))::int as sent,
             count(*) filter (where ls.status in ('Replied','Deal','Won'))::int as replied
      from sprints s
      left join lead_sprint ls on ls.sprint_id = s.id
-     group by s.id, s.name, s.focus, s.start_date, s.subject_tpl, s.body_tpl
+     group by s.id, s.name, s.focus, s.start_date, s.subject_tpl, s.body_tpl, s.steps
      order by s.start_date desc`
   );
   return rows.map((r: any) => ({
