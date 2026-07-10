@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 
 type Lead = {
   id: number; company: string; owner: string | null; role: string | null;
@@ -13,6 +14,7 @@ const base = (s: string) => (s || "").split(" (")[0];
 const STATUSES = ["All", "New", "Sent", "Replied", "No"];
 
 export default function LeadsClient() {
+  const { data: session } = useSession();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [owner, setOwner] = useState("All");
@@ -57,7 +59,21 @@ export default function LeadsClient() {
           <div className="brand">Nearwork · Leads</div>
           <div className="sub">leads.nearwork.co — live pipeline. Changes save instantly for the whole team.</div>
         </div>
-        <div className="asof">{leads.filter((l) => l.status !== "No").length} active companies</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="asof">{leads.filter((l) => l.status !== "No").length} active companies</div>
+          {session?.user?.email && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span className="muted">{session.user.email}</span>
+              <button
+                className="act"
+                onClick={() => signOut({ callbackUrl: "/signin" })}
+                title="Sign out"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="cards">
