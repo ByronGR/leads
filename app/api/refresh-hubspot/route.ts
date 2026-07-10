@@ -129,10 +129,13 @@ export async function POST(req: Request) {
   }
   const token = process.env.HUBSPOT_TOKEN;
   try {
+    // Only the COLD sequence (New / Sent). Once a lead replies (Replied/Deal/Won)
+    // it's a live conversation — those emails are NOT follow-ups, so we freeze the
+    // count and never touch it here. 'No' is excluded too.
     const leads = await q<{ id: number; email: string; sent_count: number; status: string; status_locked: boolean }>(
       `select id, email, sent_count, status, status_locked
        from leads
-       where email is not null and email <> '' and status <> 'No'`
+       where email is not null and email <> '' and status in ('New','Sent')`
     );
     if (!leads.length) return NextResponse.json({ ok: true, checked: 0, updated: 0 });
 
