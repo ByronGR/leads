@@ -22,7 +22,10 @@ export async function POST(req: Request) {
          on conflict (company) do update set
            owner            = case when leads.owner_locked then leads.owner
                                    else coalesce(nullif(excluded.owner, ''), leads.owner) end,
-           status           = case when leads.status_locked then leads.status
+           status           = case
+                                   when leads.status = 'No' and leads.status_locked then 'No'
+                                   when excluded.status in ('Replied','Deal','Won') then excluded.status
+                                   when leads.status_locked then leads.status
                                    else coalesce(nullif(excluded.status, ''), leads.status) end,
            role             = excluded.role,
            email            = coalesce(nullif(leads.email, ''), excluded.email),

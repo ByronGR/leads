@@ -127,7 +127,23 @@ export default function LeadsClient() {
       body: JSON.stringify(body),
     });
   }
-  const markNo = (l: Lead) => patch(l.id, { status: l.status === "No" ? "New" : "No" });
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  function doAction(l: Lead, action: string) {
+    if (action === "messaged") {
+      patch(l.id, { status: "Sent", sent_count: (l.sent_count || 0) + 1, last_activity: todayISO() });
+    } else if (action === "messaged_date") {
+      const d = window.prompt("What date did you message them? (YYYY-MM-DD)", todayISO());
+      if (!d) return;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) patch(l.id, { status: "Sent", sent_count: (l.sent_count || 0) + 1, last_activity: d.trim() });
+      else window.alert("Please use the format YYYY-MM-DD, e.g. 2026-07-09");
+    } else if (action === "replied") {
+      patch(l.id, { status: "Replied" });
+    } else if (action === "not_interested") {
+      patch(l.id, { status: "No" });
+    } else if (action === "reset") {
+      patch(l.id, { status: "New", sent_count: 0, reset: true });
+    }
+  }
 
   async function copy(text: string, tag: string) {
     try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(""), 1400); }
@@ -284,7 +300,20 @@ export default function LeadsClient() {
                       <td className="muted">{(l.last_activity || "").slice(0, 10)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {hasMsg && <button className="act" onClick={() => setOpenMsg(isOpen ? null : l.id)} style={{ marginRight: 6 }}>{isOpen ? "Hide" : "✉ Message"}</button>}
-                        <button className="act" onClick={() => markNo(l)}>{l.status === "No" ? "Undo" : "Not interested"}</button>
+                        <select
+                          className="act"
+                          value=""
+                          onChange={(e) => doAction(l, e.target.value)}
+                          style={{ cursor: "pointer" }}
+                          title="Update this lead"
+                        >
+                          <option value="" disabled>Update ▾</option>
+                          <option value="messaged">✓ Messaged today</option>
+                          <option value="messaged_date">✓ Messaged on a date…</option>
+                          <option value="replied">💬 Mark replied</option>
+                          <option value="not_interested">🚫 Not interested</option>
+                          <option value="reset">↺ Reset to New</option>
+                        </select>
                       </td>
                     </tr>
                     {isOpen && (

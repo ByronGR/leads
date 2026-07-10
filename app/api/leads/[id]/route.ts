@@ -6,7 +6,7 @@ import { q } from "@/lib/db";
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json();
-    const allowed = ["status", "owner", "ab_variant", "email", "email_confidence"];
+    const allowed = ["status", "owner", "ab_variant", "email", "email_confidence", "sent_count", "last_activity"];
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
@@ -17,8 +17,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     // A manual owner/status change locks that field from the daily HubSpot sync.
+    // "reset" hands the lead back to HubSpot (unlocks status).
     if ("owner" in body) sets.push(`owner_locked = true`);
-    if ("status" in body) sets.push(`status_locked = true`);
+    if (body.reset === true) sets.push(`status_locked = false`);
+    else if ("status" in body) sets.push(`status_locked = true`);
     if (!sets.length) return NextResponse.json({ ok: false, error: "no fields" }, { status: 400 });
     vals.push(params.id);
     await q(`update leads set ${sets.join(", ")}, updated_at = now() where id = $${i}`, vals);
