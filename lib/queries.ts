@@ -9,7 +9,7 @@ export async function leadsWithSprint() {
     `select l.id, l.company, l.owner, l.role, l.email, l.email_confidence, l.status,
             l.sent_count, l.ab_variant, l.why_now, l.job_url, l.last_activity,
             l.opened, l.opened_at, l.first_name, l.contact_name, l.lead_date,
-            s.name as sprint_name, s.subject_tpl, s.body_tpl
+            s.name as sprint_name, s.subject_tpl, s.body_tpl, s.steps
      from leads l
      left join lateral (
        select name, subject_tpl, body_tpl, steps
