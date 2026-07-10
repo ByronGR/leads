@@ -27,6 +27,24 @@ alter table leads add column if not exists status_locked boolean default false;
 -- Genuine prospect open (rep batch-prep phantom opens already filtered out upstream).
 alter table leads add column if not exists opened boolean default false;
 alter table leads add column if not exists opened_at date;
+-- Fields for the Sprint copy-paste message + which Sprint a lead falls in (by date).
+alter table leads add column if not exists first_name text;
+alter table leads add column if not exists contact_name text;
+alter table leads add column if not exists lead_date date;
+-- Sprints = sequential outreach campaigns. A lead belongs to the sprint whose
+-- start_date is the latest one on or before the lead's date. Each sprint holds
+-- its own subject/body template (the reach / formatting / CTA being tested).
+create table if not exists sprints (
+  id serial primary key,
+  name text not null unique,
+  focus text,
+  start_date date not null,
+  subject_tpl text,
+  body_tpl text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_sprints_start on sprints(start_date);
 `;
 
 export async function GET(req: Request) {

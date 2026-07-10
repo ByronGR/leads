@@ -11,14 +11,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const { leads } = await req.json();
+    const { leads, sprints } = await req.json();
     let n = 0;
     for (const l of leads || []) {
       if (!l.company) continue;
       await q(
         `insert into leads
-           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          on conflict (company) do update set
            owner            = case when leads.owner_locked then leads.owner
                                    else coalesce(nullif(excluded.owner, ''), leads.owner) end,
@@ -33,17 +33,38 @@ export async function POST(req: Request) {
            last_activity    = excluded.last_activity,
            opened           = excluded.opened,
            opened_at        = excluded.opened_at,
+           first_name       = coalesce(nullif(excluded.first_name, ''), leads.first_name),
+           contact_name     = coalesce(nullif(excluded.contact_name, ''), leads.contact_name),
+           lead_date        = coalesce(excluded.lead_date, leads.lead_date),
            updated_at       = now()`,
         [
           l.company, l.domain ?? null, l.owner ?? null, l.role ?? null, l.email ?? null,
           l.email_confidence ?? null, l.status || "New", l.sent_count || 0,
           l.why_now ?? null, l.job_url ?? null, l.last_activity ?? null,
           l.opened ?? false, l.opened_at ?? null,
+          l.first_name ?? null, l.contact_name ?? null, l.lead_date ?? null,
         ]
       );
       n++;
     }
-    return NextResponse.json({ ok: true, ingested: n });
+    // Optional: define/update Sprints (sequential campaigns). Upsert by name.
+    let s = 0;
+    for (const sp of sprints || []) {
+      if (!sp.name || !sp.start_date) continue;
+      await q(
+        `insert into sprints (name, focus, start_date, subject_tpl, body_tpl)
+         values ($1,$2,$3,$4,$5)
+         on conflict (name) do update set
+           focus       = excluded.focus,
+           start_date  = excluded.start_date,
+           subject_tpl = excluded.subject_tpl,
+           body_tpl    = excluded.body_tpl,
+           updated_at  = now()`,
+        [sp.name, sp.focus ?? null, sp.start_date, sp.subject_tpl ?? null, sp.body_tpl ?? null]
+      );
+      s++;
+    }
+    return NextResponse.json({ ok: true, ingested: n, sprints: s });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
