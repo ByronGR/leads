@@ -24,6 +24,9 @@ create index if not exists idx_leads_status on leads(status);
 -- won't overwrite it. Otherwise HubSpot is the source of truth for owner/status.
 alter table leads add column if not exists owner_locked boolean default false;
 alter table leads add column if not exists status_locked boolean default false;
+-- Genuine prospect open (rep batch-prep phantom opens already filtered out upstream).
+alter table leads add column if not exists opened boolean default false;
+alter table leads add column if not exists opened_at date;
 `;
 
 export async function GET(req: Request) {

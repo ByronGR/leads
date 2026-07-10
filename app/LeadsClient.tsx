@@ -6,6 +6,7 @@ type Lead = {
   email: string | null; email_confidence: string | null; status: string;
   sent_count: number; ab_variant: string; why_now: string | null;
   job_url: string | null; last_activity: string | null;
+  opened?: boolean; opened_at?: string | null;
 };
 
 const base = (s: string) => (s || "").split(" (")[0];
@@ -97,7 +98,17 @@ export default function LeadsClient() {
                   <td className="co">{l.company}</td>
                   <td>{l.owner || "—"}</td>
                   <td className="muted">{l.role || "—"}</td>
-                  <td><span className={`badge b-${base(l.status)}`}>{l.status}{l.sent_count > 0 && base(l.status) === "Sent" ? ` (touch ${l.sent_count})` : ""}</span></td>
+                  <td>
+                    <span className={`badge b-${base(l.status)}`}>{l.status}{l.sent_count > 0 && base(l.status) === "Sent" ? ` (touch ${l.sent_count})` : ""}</span>
+                    {l.opened && (
+                      <span
+                        title={`Genuinely opened${l.opened_at ? ` on ${(l.opened_at || "").slice(0, 10)}` : ""} — rep prep-opens are filtered out`}
+                        style={{ marginLeft: 6, fontSize: 11, color: "#0a7", whiteSpace: "nowrap" }}
+                      >
+                        👁 Opened{l.opened_at ? ` ${(l.opened_at || "").slice(5, 10)}` : ""}
+                      </span>
+                    )}
+                  </td>
                   <td>{l.email ? (<>{l.email}<div className="muted">{l.email_confidence}</div></>) : <span className="muted">—</span>}</td>
                   <td><span className="ab">
                     <button className={l.ab_variant === "A" ? "on" : ""} onClick={() => setAB(l, "A")}>A</button>
