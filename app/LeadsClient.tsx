@@ -213,7 +213,7 @@ export default function LeadsClient() {
         <div className="chips">
           {STATUSES.map((s) => (
             <div key={s} className={`chip ${s === status ? "on" : ""}`} onClick={() => setStatus(s)}>
-              {s}{s === NEEDS ? ` · ${owner === "All" ? counts.needs : ownerCount(owner)}` : ""}
+              {s === "No" ? "Not interested" : s}{s === NEEDS ? ` · ${owner === "All" ? counts.needs : ownerCount(owner)}` : ""}
             </div>
           ))}
         </div>
@@ -265,7 +265,7 @@ export default function LeadsClient() {
                       <td className="muted">{(l.last_activity || "").slice(0, 10)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {hasMsg && <button className="act" onClick={() => setOpenMsg(isOpen ? null : l.id)} style={{ marginRight: 6 }}>{isOpen ? "Hide" : "✉ Message"}</button>}
-                        <button className="act" onClick={() => markNo(l)}>{l.status === "No" ? "Undo" : "Mark No"}</button>
+                        <button className="act" onClick={() => markNo(l)}>{l.status === "No" ? "Undo" : "Not interested"}</button>
                       </td>
                     </tr>
                     {isOpen && (
