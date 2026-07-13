@@ -15,7 +15,10 @@ export async function leadsWithSprint() {
      left join lateral (
        select name, subject_tpl, body_tpl, steps
        from sprints
-       where start_date <= coalesce(l.lead_date, l.last_activity, current_date)
+       -- Un-emailed (New) leads always get the CURRENT sprint's copy; already-contacted
+       -- leads stay on the sprint that was live when they were first emailed.
+       where start_date <= (case when l.status = 'New' then current_date
+                                 else coalesce(l.lead_date, l.last_activity, current_date) end)
        order by start_date desc
        limit 1
      ) s on true
@@ -28,7 +31,8 @@ export async function sprintPerformance() {
     `with lead_sprint as (
        select l.id, l.status, l.sent_count,
               (select s.id from sprints s
-                 where s.start_date <= coalesce(l.lead_date, l.last_activity, current_date)
+                 where s.start_date <= (case when l.status = 'New' then current_date
+                                             else coalesce(l.lead_date, l.last_activity, current_date) end)
                  order by s.start_date desc limit 1) as sprint_id
        from leads l
        where l.status <> 'No'
