@@ -10,10 +10,12 @@ type Lead = {
   last_activity: string | null; opened?: boolean; opened_at?: string | null;
   first_name?: string | null; contact_name?: string | null; lead_date?: string | null;
   sprint_name?: string | null; subject_tpl?: string | null; body_tpl?: string | null;
-  steps?: { subject?: string; body?: string }[] | null;
+  // Either one array (single sequence) OR an object keyed by source (per-source sequences).
+  steps?: Step[] | Record<string, Step[]> | null;
   gen_subject?: string | null; gen_body?: string | null;
   source?: string | null;
 };
+type Step = { subject?: string; body?: string };
 const SOURCES = [
   { key: "active", label: "Active" },
   { key: "hard-to-fill", label: "Hard-to-fill" },
@@ -81,9 +83,13 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
   if (idx === 0 && l.gen_body) {
     return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
   }
-  const steps = (l.steps && l.steps.length) ? l.steps : [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
-  if (idx >= steps.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
-  const step = steps[idx];
+  // Resolve the sequence: a per-source object picks by the lead's source; otherwise a single array.
+  const raw = l.steps as any;
+  const src = l.source || "active";
+  const seq: Step[] = Array.isArray(raw) ? raw
+    : (raw && (raw[src] || raw["active"])) || [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
+  if (idx >= seq.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
+  const step = seq[idx];
   return { label: idx === 0 ? "First email" : `Follow-up ${idx}`, subject: render(step.subject, l), body: stripSignature(render(step.body, l)) };
 }
 
