@@ -1,21 +1,11 @@
 import { NextResponse } from "next/server";
 import { q } from "@/lib/db";
-import { CALCULATOR_URL } from "../route";
+import { CALCULATOR_URL, idForCode } from "@/lib/savings";
 
 export const dynamic = "force-dynamic";
 
 // Per-lead tracked link: /savings/{code}. Logs that this company clicked their
-// calculator link (a real buy signal), then redirects to the calculator. Never
-// blocks the redirect — if anything fails we still send them through.
-const OFFSET = 100000;
-export function codeForId(id: number) {
-  return (id + OFFSET).toString(36);
-}
-function idForCode(code: string): number | null {
-  const n = parseInt(code, 36) - OFFSET;
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
+// calculator link (a real buy signal), then redirects. Never blocks the redirect.
 export async function GET(_req: Request, { params }: { params: { code: string } }) {
   try {
     const id = idForCode(params.code);
