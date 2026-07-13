@@ -1,29 +1,11 @@
 "use client";
 import { signIn } from "next-auth/react";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 function SignInInner() {
   const params = useSearchParams();
-  const urlError = params.get("error");
-  const [passcode, setPasscode] = useState("");
-  const [showPasscode, setShowPasscode] = useState(false);
-  const [error, setError] = useState(urlError === "CredentialsSignin" ? "wrong" : "");
-  const [busy, setBusy] = useState(false);
-
-  async function submitPasscode(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    const res = await signIn("credentials", { passcode, redirect: false, callbackUrl: "/" });
-    setBusy(false);
-    if (res?.ok) {
-      window.location.href = "/";
-    } else {
-      setError("wrong");
-    }
-  }
-
+  const error = params.get("error");
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -37,6 +19,15 @@ function SignInInner() {
         <div style={{ color: "#9aa4b6", fontSize: 14, marginTop: 8, marginBottom: 24 }}>
           Sign in with your <b>Nearwork Microsoft</b> account to continue.
         </div>
+
+        {error && (
+          <div style={{
+            background: "#3a1b1b", border: "1px solid #5b2a2a", color: "#ffb4b4",
+            borderRadius: 10, padding: "10px 12px", fontSize: 13, marginBottom: 16,
+          }}>
+            Couldn’t sign you in. Use your <b>@nearwork.co</b> Microsoft account and try again.
+          </div>
+        )}
 
         <button
           onClick={() => signIn("azure-ad", { callbackUrl: "/" })}
@@ -57,51 +48,6 @@ function SignInInner() {
 
         <div style={{ color: "#5f6a7d", fontSize: 12, marginTop: 20 }}>
           Access is restricted to the Nearwork team.
-        </div>
-
-        {/* Temporary passcode fallback while we finish the Microsoft switch */}
-        <div style={{ borderTop: "1px solid #232a37", marginTop: 24, paddingTop: 16 }}>
-          {!showPasscode ? (
-            <button
-              onClick={() => setShowPasscode(true)}
-              style={{ background: "none", border: "none", color: "#5f6a7d", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}
-            >
-              Use team passcode instead
-            </button>
-          ) : (
-            <form onSubmit={submitPasscode}>
-              {error === "wrong" && (
-                <div style={{
-                  background: "#3a1b1b", border: "1px solid #5b2a2a", color: "#ffb4b4",
-                  borderRadius: 10, padding: "8px 10px", fontSize: 13, marginBottom: 12,
-                }}>
-                  Incorrect passcode.
-                </div>
-              )}
-              <input
-                type="password"
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Team passcode"
-                autoFocus
-                style={{
-                  width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #2c3444",
-                  background: "#0f131b", color: "#e8ebf2", fontSize: 14, marginBottom: 10, boxSizing: "border-box",
-                }}
-              />
-              <button
-                type="submit"
-                disabled={busy || !passcode}
-                style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
-                  background: busy || !passcode ? "#1c6b5a" : "#12866E", color: "#fff",
-                  fontWeight: 600, fontSize: 14, cursor: busy || !passcode ? "default" : "pointer",
-                }}
-              >
-                {busy ? "Checking…" : "Enter"}
-              </button>
-            </form>
-          )}
         </div>
       </div>
     </div>
