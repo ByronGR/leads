@@ -28,8 +28,8 @@ export async function POST(req: Request) {
       if (!l.company) continue;
       await q(
         `insert into leads
-           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          on conflict (company) do update set
            owner            = case when leads.owner_locked then leads.owner
                                    else coalesce(nullif(excluded.owner, ''), leads.owner) end,
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
            lead_date        = coalesce(excluded.lead_date, leads.lead_date),
            gen_subject      = coalesce(nullif(excluded.gen_subject, ''), leads.gen_subject),
            gen_body         = coalesce(nullif(excluded.gen_body, ''), leads.gen_body),
+           source           = coalesce(nullif(excluded.source, ''), leads.source),
            updated_at       = now()`,
         [
           l.company, l.domain ?? null, l.owner ?? null, l.role ?? null, l.email ?? null,
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
           l.why_now ?? null, l.job_url ?? null, l.last_activity ?? null,
           l.opened ?? false, l.opened_at ?? null,
           l.first_name ?? null, l.contact_name ?? null, l.lead_date ?? null,
-          l.gen_subject ?? null, l.gen_body ?? null,
+          l.gen_subject ?? null, l.gen_body ?? null, l.source ?? null,
         ]
       );
       n++;

@@ -12,7 +12,14 @@ type Lead = {
   sprint_name?: string | null; subject_tpl?: string | null; body_tpl?: string | null;
   steps?: { subject?: string; body?: string }[] | null;
   gen_subject?: string | null; gen_body?: string | null;
+  source?: string | null;
 };
+const SOURCES = [
+  { key: "active", label: "Active" },
+  { key: "hard-to-fill", label: "Hard-to-fill" },
+  { key: "recently-placed", label: "Recently placed" },
+];
+const sourceLabel = (s?: string | null) => SOURCES.find((x) => x.key === s)?.label || "Active";
 type Sprint = {
   id: number; name: string; focus: string | null; start_date: string;
   leads: number; sent: number; replied: number; reply_rate: number;
@@ -362,6 +369,7 @@ export default function LeadsClient() {
   const [loading, setLoading] = useState(true);
   const [owner, setOwner] = useState("All");
   const [status, setStatus] = useState(NEEDS);
+  const [sourceF, setSourceF] = useState("All");
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState<number | null>(null);
   const [sel, setSel] = useState<number | null>(null);
@@ -427,6 +435,13 @@ export default function LeadsClient() {
   }
 
   const bestRate = useMemo(() => Math.max(0, ...sprints.map((s) => s.reply_rate)), [sprints]);
+  // Per-sprint breakdown by lead source (computed from the leads we already have).
+  const sourceBreakdown = (sprintName: string) => SOURCES.map((src) => {
+    const inSrc = leads.filter((l) => l.sprint_name === sprintName && (l.source || "active") === src.key && l.status !== "No");
+    const sent = inSrc.filter((l) => l.status === "Sent" || norm(l.status) === "Replied").length;
+    const replied = inSrc.filter((l) => norm(l.status) === "Replied").length;
+    return { ...src, leads: inSrc.length, sent, replied, rate: sent ? Math.round((replied / sent) * 1000) / 10 : 0 };
+  }).filter((b) => b.leads > 0);
   const counts = useMemo(() => {
     const c: Record<string, number> = { needs: 0, total: 0, New: 0, Sent: 0, Replied: 0 };
     leads.forEach((l) => {
@@ -450,8 +465,9 @@ export default function LeadsClient() {
 
   const rows = useMemo(() => leads.filter((l) =>
     (owner === "All" || (l.owner || "—") === owner) && matchStatus(l) &&
+    (sourceF === "All" || (l.source || "active") === sourceF) &&
     (query === "" || l.company.toLowerCase().includes(query.toLowerCase()))
-  ), [leads, owner, status, query]);
+  ), [leads, owner, status, sourceF, query]);
 
   const drawerLead = leads.find((l) => l.id === drawer) || null;
   const email = session?.user?.email || "";
@@ -504,6 +520,17 @@ export default function LeadsClient() {
                       <div><div className="v">{s.replied}</div><div className="k">Replied</div></div>
                     </div>
                   </div>
+                  {sourceBreakdown(s.name).length > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", gap: 14, flexWrap: "wrap" }}>
+                      {sourceBreakdown(s.name).map((b) => (
+                        <div key={b.key} style={{ fontSize: 12 }}>
+                          <span style={{ color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700 }}>{b.label}</span>
+                          <span style={{ marginLeft: 6, color: "var(--tx)", fontWeight: 700 }}>{b.sent} sent</span>
+                          <span style={{ marginLeft: 6, color: "var(--tx-2)" }}>· {b.replied} replied ({b.rate}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -533,6 +560,15 @@ export default function LeadsClient() {
             <div key={s} className={"chip" + (s === status ? " on" : "")} onClick={() => setStatus(s)}>
               {STATUS_LABEL[s] || s}
               {s === NEEDS && <span className="c">{owner === "All" ? counts.needs : ownerCount(owner)}</span>}
+            </div>
+          ))}
+        </div>
+        <div className="divider-v" />
+        <div className="chips">
+          {["All", ...SOURCES.map((s) => s.key)].map((k) => (
+            <div key={k} className={"chip" + (k === sourceF ? " on" : "")} onClick={() => setSourceF(k)}>
+              {k === "All" ? "All sources" : sourceLabel(k)}
+              {k !== "All" && <span className="c">{leads.filter((l) => (l.source || "active") === k && l.status !== "No").length}</span>}
             </div>
           ))}
         </div>
