@@ -13,9 +13,12 @@ type Lead = {
   // Either one array (single sequence) OR an object keyed by source (per-source sequences).
   steps?: Step[] | Record<string, Step[]> | null;
   gen_subject?: string | null; gen_body?: string | null;
-  source?: string | null;
+  source?: string | null; calc_clicked?: string | null;
 };
 type Step = { subject?: string; body?: string };
+
+// Per-lead tracked /savings link (records who clicked the calculator).
+const savingsLink = (id: number) => `leads.nearwork.co/savings/${(id + 100000).toString(36)}`;
 const SOURCES = [
   { key: "active", label: "Active" },
   { key: "hard-to-fill", label: "Hard-to-fill" },
@@ -59,6 +62,7 @@ function render(tpl: string | null | undefined, l: Lead) {
     role: (l.role || "the role").toString(),
     contact_name: l.contact_name || l.first_name || "",
     sender: (l.owner || "the Nearwork team"),
+    savings: savingsLink(l.id),
   };
   return (tpl || "").replace(/\{(\w+)\}/g, (_m, k) => (k in map ? map[k] : `{${k}}`));
 }
@@ -203,6 +207,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
               <StageBadge l={l} />
               <span className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</span>
               {l.opened && <span className="opened">👁 Opened {String(l.opened_at || "").slice(5, 10)}</span>}
+              {l.calc_clicked && <span className="opened" style={{ color: "#e8590c" }} title="Clicked the savings calculator — strong buy signal">🔥 Clicked calculator</span>}
             </div>
           </div>
           <button className="iconbtn" onClick={onClose} title="Close"><Icon d={<><path d="M18 6 6 18" /><path d="m6 6 12 12" /></>} /></button>
@@ -233,7 +238,7 @@ function RowCard({ l, onOpen, onAction }: { l: Lead; onOpen: (l: Lead) => void; 
     <div className={"rowcard" + (l.status === "No" ? " dim" : "")} onClick={() => onOpen(l)} style={{ cursor: "pointer" }}>
       <div className="co-cell">
         <div className="co">{l.company}</div>
-        <div className="co-sub"><StageBadge l={l} />{l.opened && <span className="opened">👁</span>}</div>
+        <div className="co-sub"><StageBadge l={l} />{l.opened && <span className="opened">👁</span>}{l.calc_clicked && <span className="opened" title="Clicked the savings calculator" style={{ color: "#e8590c" }}>🔥 clicked</span>}</div>
       </div>
       <div className="role">{l.role || "—"}</div>
       <div className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</div>

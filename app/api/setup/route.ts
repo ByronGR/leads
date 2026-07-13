@@ -57,6 +57,8 @@ alter table leads add column if not exists gen_body text;
 -- (role open a long time), 'recently-placed' (posting just closed). Tracked so the
 -- Sprint view can compare reply rate by source.
 alter table leads add column if not exists source text default 'active';
+-- When this lead clicked their /savings calculator link (a strong buy signal).
+alter table leads add column if not exists calc_clicked timestamptz;
 `;
 
 export async function GET(req: Request) {
