@@ -77,17 +77,18 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
   if (["Replied", "Deal", "Won"].includes(l.status)) return { label: "Replied", note: "This lead replied — continue the conversation in your inbox." };
   if (l.status === "No") return { label: "Not interested", note: "Marked not interested — no further outreach." };
   const idx = l.sent_count || 0;
-  // First touch: show the routine's PERSONALIZED email (what the rep actually sends),
-  // but ONLY when it has a body — otherwise fall back to the full Sprint template so
-  // the message is never blank.
-  if (idx === 0 && l.gen_body) {
-    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
-  }
-  // Resolve the sequence: a per-source object picks by the lead's source; otherwise a single array.
+  // Resolve the sequence: a per-source object (Sprint 2+) picks by the lead's source;
+  // a plain array is the legacy single sequence (Sprint 1).
   const raw = l.steps as any;
+  const perSource = !!raw && !Array.isArray(raw);
   const src = l.source || "active";
   const seq: Step[] = Array.isArray(raw) ? raw
     : (raw && (raw[src] || raw["active"])) || [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
+  // First touch: legacy sprints use the routine's personalized body; per-source sprints
+  // use the source's tailored copy. Never blank (falls back to template).
+  if (idx === 0 && !perSource && l.gen_body) {
+    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
+  }
   if (idx >= seq.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
   const step = seq[idx];
   return { label: idx === 0 ? "First email" : `Follow-up ${idx}`, subject: render(step.subject, l), body: stripSignature(render(step.body, l)) };
