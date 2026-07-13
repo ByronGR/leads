@@ -1,31 +1,25 @@
 import type { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 
-// Only @nearwork.co Google accounts may sign in. The OAuth consent screen is set
-// to "Internal" in Google Cloud (Workspace-only), and we double-check the email
-// domain here as defense-in-depth.
-export const ALLOWED_DOMAIN = "nearwork.co";
-
+// TEMPORARY shared-passcode gate (until we move to Microsoft SSO). Google sign-in
+// was removed 2026-07-13. One shared password for the whole team, checked against
+// the APP_PASSCODE env var (set in Vercel — never in the repo, which is public).
+// This is NOT open to the public: without the passcode you can't get in. If
+// APP_PASSCODE is unset the gate fails closed (nobody can sign in) by design.
 export const authOptions: NextAuthOptions = {
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-      // hd hint pre-filters the Google account chooser to the Workspace domain.
-      authorization: { params: { hd: ALLOWED_DOMAIN, prompt: "select_account" } },
+    CredentialsProvider({
+      name: "Passcode",
+      credentials: { passcode: { label: "Passcode", type: "password" } },
+      async authorize(credentials) {
+        const expected = process.env.APP_PASSCODE || "";
+        if (expected && credentials?.passcode === expected) {
+          return { id: "team", name: "Nearwork", email: "team@nearwork.co" };
+        }
+        return null;
+      },
     }),
   ],
-  callbacks: {
-    async signIn({ profile, user }) {
-      const email = ((profile as any)?.email || user?.email || "").toLowerCase();
-      const hd = (profile as any)?.hd;
-      return email.endsWith(`@${ALLOWED_DOMAIN}`) || hd === ALLOWED_DOMAIN;
-    },
-    async session({ session, token }) {
-      if (session.user && token?.picture) session.user.image = token.picture as string;
-      return session;
-    },
-  },
   pages: { signIn: "/signin" },
   session: { strategy: "jwt" },
 };
