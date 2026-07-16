@@ -26,6 +26,17 @@ export async function POST(req: Request) {
     let n = 0;
     for (const l of leads || []) {
       if (!l.company) continue;
+      // Dedupe case/punctuation-insensitively: if a row already exists for this
+      // company under different casing/spacing (e.g. "Zoo" vs "zoo"), update THAT
+      // row instead of inserting a duplicate.
+      const norm = String(l.company).toLowerCase().replace(/[^a-z0-9]/g, "");
+      const existing = await q<{ company: string }>(
+        `select company from leads
+         where lower(regexp_replace(company, '[^a-zA-Z0-9]', '', 'g')) = $1
+         limit 1`,
+        [norm]
+      );
+      const company = existing[0]?.company || l.company;
       await q(
         `insert into leads
            (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source)
@@ -51,13 +62,16 @@ export async function POST(req: Request) {
            opened_at        = excluded.opened_at,
            first_name       = coalesce(nullif(excluded.first_name, ''), leads.first_name),
            contact_name     = coalesce(nullif(excluded.contact_name, ''), leads.contact_name),
-           lead_date        = coalesce(excluded.lead_date, leads.lead_date),
+           -- KEEP the original lead_date (first-seen). Re-pulling a company that
+           -- reopened a role must NOT re-date it into the current sprint — that
+           -- was dragging already-contacted Sprint-1 leads into Sprint 2.
+           lead_date        = coalesce(leads.lead_date, excluded.lead_date),
            gen_subject      = coalesce(nullif(excluded.gen_subject, ''), leads.gen_subject),
            gen_body         = coalesce(nullif(excluded.gen_body, ''), leads.gen_body),
            source           = coalesce(nullif(excluded.source, ''), leads.source),
            updated_at       = now()`,
         [
-          l.company, l.domain ?? null, l.owner ?? null, l.role ?? null, l.email ?? null,
+          company, l.domain ?? null, l.owner ?? null, l.role ?? null, l.email ?? null,
           l.email_confidence ?? null, l.status || "New", l.sent_count || 0,
           l.why_now ?? null, l.job_url ?? null, l.last_activity ?? null,
           l.opened ?? false, l.opened_at ?? null,
