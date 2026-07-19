@@ -23,11 +23,21 @@ const SOURCES = [
   { key: "active", label: "Active" },
   { key: "hard-to-fill", label: "Hard-to-fill" },
   { key: "recently-placed", label: "Recently placed" },
+  { key: "backlog", label: "Backlog" },
+  { key: "nearshore-switch", label: "Nearshore switch" },
+  { key: "latam-list", label: "LATAM list" },
 ];
 const sourceLabel = (s?: string | null) => SOURCES.find((x) => x.key === s)?.label || "Active";
 type Sprint = {
   id: number; name: string; focus: string | null; start_date: string;
   leads: number; sent: number; replied: number; reply_rate: number;
+};
+// Per-source performance — each lead source has its own message, so each is
+// measured on its own (and per sprint, to compare message versions over time).
+type SourcePerf = {
+  source: string; sprint_name: string | null; leads: number; pending: number;
+  sent: number; opened: number; replied: number; deals: number;
+  reply_rate: number; open_rate: number;
 };
 
 /* ---------------- domain logic ---------------- */
@@ -377,6 +387,7 @@ export default function LeadsClient() {
   const { data: session } = useSession();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [sourcePerf, setSourcePerf] = useState<SourcePerf[]>([]);
   const [loading, setLoading] = useState(true);
   const [owner, setOwner] = useState("All");
   const [status, setStatus] = useState(NEEDS);
@@ -393,9 +404,10 @@ export default function LeadsClient() {
   async function load(silent = false) {
     if (silent) setRefreshing(true); else setLoading(true);
     try {
-      const [lr, sr] = await Promise.all([fetch("/api/leads", { cache: "no-store" }), fetch("/api/sprints", { cache: "no-store" })]);
+      const [lr, sr, xr] = await Promise.all([fetch("/api/leads", { cache: "no-store" }), fetch("/api/sprints", { cache: "no-store" }), fetch("/api/sources", { cache: "no-store" })]);
       setLeads(lr.ok ? await lr.json() : []);
       setSprints(sr.ok ? await sr.json() : []);
+      setSourcePerf(xr.ok ? await xr.json() : []);
       setUpdatedAt(Date.now());
     } finally { setLoading(false); setRefreshing(false); }
   }
@@ -508,6 +520,43 @@ export default function LeadsClient() {
           )}
         </div>
       </div>
+
+      {sourcePerf.length > 0 && (
+        <div className="ab-wrap">
+          <div className="section-h">Source performance · where the leads come from</div>
+          <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--bg-1)" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13, minWidth: 620 }}>
+              <thead>
+                <tr>
+                  {["Source", "Sprint", "Leads", "To send", "Sent", "Opened", "Replied", "Reply rate"].map((h, i) => (
+                    <th key={h} style={{ textAlign: i < 2 ? "left" : "right", padding: "9px 14px", fontSize: 10,
+                      letterSpacing: ".08em", textTransform: "uppercase", color: "var(--tx-3)", fontWeight: 700,
+                      borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sourcePerf.map((r, i) => (
+                  <tr key={r.source + (r.sprint_name || "") + i}>
+                    <td style={{ padding: "9px 14px", borderBottom: "1px solid var(--line)", fontWeight: 700 }}>{sourceLabel(r.source)}</td>
+                    <td style={{ padding: "9px 14px", borderBottom: "1px solid var(--line)", color: "var(--tx-2)", whiteSpace: "nowrap" }}>{r.sprint_name || "—"}</td>
+                    {[r.leads, r.pending, r.sent, r.opened, r.replied].map((v, j) => (
+                      <td key={j} style={{ padding: "9px 14px", borderBottom: "1px solid var(--line)", textAlign: "right",
+                        fontVariantNumeric: "tabular-nums", color: j === 1 && v > 0 ? "var(--tx)" : "var(--tx-2)",
+                        fontWeight: j === 1 && v > 0 ? 700 : 400 }}>{v}</td>
+                    ))}
+                    <td style={{ padding: "9px 14px", borderBottom: "1px solid var(--line)", textAlign: "right",
+                      fontVariantNumeric: "tabular-nums", fontWeight: 700,
+                      color: r.replied > 0 ? "var(--accent)" : "var(--tx-3)" }}>
+                      {r.sent > 0 ? r.reply_rate + "%" : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {sprints.length > 0 && (
         <div className="ab-wrap">
