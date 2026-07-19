@@ -26,6 +26,39 @@ export async function leadsWithSprint() {
   );
 }
 
+// Per-SOURCE performance (Byron 2026-07-19): each lead source (active / backlog /
+// hard-to-fill / recently-placed / nearshore-switch / latam-list) gets its own
+// message, so we need to see how each one performs on its own — and per sprint,
+// so different message versions of the same source can be compared.
+export async function sourcePerformance() {
+  const rows = await q(
+    `select coalesce(nullif(l.source, ''), 'unspecified') as source,
+            s.name as sprint_name,
+            count(*)::int                                                            as leads,
+            count(*) filter (where l.status = 'New')::int                            as pending,
+            count(*) filter (where coalesce(l.sent_count,0) > 0
+                                or l.status in ('Sent','Replied','Deal','Won'))::int as sent,
+            count(*) filter (where l.opened)::int                                    as opened,
+            count(*) filter (where l.status in ('Replied','Deal','Won'))::int        as replied,
+            count(*) filter (where l.status in ('Deal','Won'))::int                  as deals
+     from leads l
+     left join lateral (
+       select name from sprints
+       where start_date <= (case when l.status = 'New' then current_date
+                                 else coalesce(l.lead_date, l.last_activity, current_date) end)
+       order by start_date desc limit 1
+     ) s on true
+     where l.status <> 'No'
+     group by 1, 2
+     order by 1, 2 desc`
+  );
+  return rows.map((r: any) => ({
+    ...r,
+    reply_rate: r.sent > 0 ? Math.round((r.replied / r.sent) * 1000) / 10 : 0,
+    open_rate: r.sent > 0 ? Math.round((r.opened / r.sent) * 1000) / 10 : 0,
+  }));
+}
+
 export async function sprintPerformance() {
   const rows = await q(
     `with lead_sprint as (

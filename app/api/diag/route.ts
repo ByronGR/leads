@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { leadsWithSprint, sprintPerformance } from "@/lib/queries";
+import { leadsWithSprint, sprintPerformance, sourcePerformance } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,8 @@ export async function GET(req: Request) {
       .filter((l: any) => !filter || (l.company || "").toLowerCase().includes(filter))
       .map((l: any) => ({ company: l.company, owner: l.owner, status: l.status, sent_count: l.sent_count, last_activity: l.last_activity, email: l.email, gen_subject: l.gen_subject, has_gen_body: !!l.gen_body, sprint_name: l.sprint_name, has_steps: !!(l.steps && l.steps.length), has_body_tpl: !!l.body_tpl }));
     const sprints = await sprintPerformance();
-    return NextResponse.json({ total: all.length, sprints, leads: compact });
+    const sources = await sourcePerformance();
+    return NextResponse.json({ total: all.length, sprints, sources, leads: compact });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
 // the next agent run hands it to the next rep in rotation — so un-emailed leads never
 // rot with one person. Only touches New (never-emailed) leads created before today,
 // and never overrides a manual reassignment (owner_locked).
-const REPS = ["Stephany", "Byron", "Nany", "Dani"];
+// Byron 2026-07-19: only Byron & Stephany receive NEW leads. Dani & Nany source
+// their own and finish existing follow-ups — those are 'Sent', so untouched here
+// (this route only rotates un-emailed New leads).
+const REPS = ["Stephany", "Byron"];
 const nextRep = (cur: string | null) => REPS[(REPS.indexOf(cur || "") + 1) % REPS.length];
 
 export async function POST(req: Request) {

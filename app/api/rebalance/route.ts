@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 // Evenly distribute un-emailed (New, not manually-assigned) leads across the four
 // reps, so nobody is left short. Auth: session OR ?secret=INGEST_SECRET.
 // Deterministic (orders by company) so re-running is stable.
-const REPS = ["Stephany", "Byron", "Nany", "Dani"];
+// Byron 2026-07-19: new leads go to Byron & Stephany only. Dani & Nany keep their
+// already-emailed leads (status 'Sent') to finish follow-ups — not touched here.
+const REPS = ["Stephany", "Byron"];
 
 export async function POST(req: Request) {
   const secret = new URL(req.url).searchParams.get("secret");
