@@ -13,7 +13,7 @@ type Lead = {
   // Either one array (single sequence) OR an object keyed by source (per-source sequences).
   steps?: Step[] | Record<string, Step[]> | null;
   gen_subject?: string | null; gen_body?: string | null;
-  source?: string | null; calc_clicked?: string | null;
+  source?: string | null; calc_clicked?: string | null; updated_at?: string | null;
 };
 type Step = { subject?: string; body?: string };
 
@@ -420,10 +420,14 @@ export default function LeadsClient() {
     if (silent) setRefreshing(true); else setLoading(true);
     try {
       const [lr, sr, xr] = await Promise.all([fetch("/api/leads", { cache: "no-store" }), fetch("/api/sprints", { cache: "no-store" }), fetch("/api/sources", { cache: "no-store" })]);
-      setLeads(lr.ok ? await lr.json() : []);
+      const ld: Lead[] = lr.ok ? await lr.json() : [];
+      setLeads(ld);
       setSprints(sr.ok ? await sr.json() : []);
       setSourcePerf(xr.ok ? await xr.json() : []);
-      setUpdatedAt(Date.now());
+      // "Updated" = the real time the data last changed on the server (max updated_at),
+      // not the moment this page fetched it — so it doesn't drift on the 60s auto-reload.
+      const maxTs = ld.reduce((m, l) => Math.max(m, l.updated_at ? new Date(l.updated_at).getTime() : 0), 0);
+      setUpdatedAt(maxTs || Date.now());
     } finally { setLoading(false); setRefreshing(false); }
   }
   useEffect(() => { load(); }, []);
@@ -524,7 +528,7 @@ export default function LeadsClient() {
           <button className="btn" onClick={refresh} disabled={refreshing} title="Pull the latest contacted status from HubSpot + Sent folders">
             {refreshing ? "Refreshing…" : "↻ Refresh"}
           </button>
-          {updatedAt > 0 && <span style={{ fontSize: 12.5, color: "var(--tx-3)" }}>Updated {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+          {updatedAt > 0 && <span style={{ fontSize: 12.5, color: "var(--tx-3)" }}>Updated {new Date(updatedAt).toDateString() === new Date().toDateString() ? new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : new Date(updatedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
           <button className="iconbtn" onClick={toggleDark} title="Toggle dark mode">{dark ? "☀" : "🌙"}</button>
           {email && (
             <div className="who">
