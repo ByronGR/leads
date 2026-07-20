@@ -46,6 +46,10 @@ const ownerColor = (o?: string | null) => OWNER_COLORS[o || ""] || "#8a978f";
 const initials = (s?: string | null) => (s || "?").trim().slice(0, 1).toUpperCase();
 const norm = (s: string) => (s === "Deal" || s === "Won" ? "Replied" : s);
 const todayISO = () => new Date().toISOString().slice(0, 10);
+// Title-case a role for DISPLAY so it stands out. Only capitalizes fully-lowercase
+// words, leaving acronyms/mixed-case intact (DevOps, SRE, QA, AI, WFH stay as-is).
+const fmtRole = (r?: string | null) =>
+  (r || "").replace(/\b[a-z][a-z]*\b/g, (w) => w[0].toUpperCase() + w.slice(1)) || "—";
 
 function daysSince(d?: string | null) {
   if (!d) return 999;
@@ -111,6 +115,16 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
 /* ---------------- atoms ---------------- */
 function OwnerDot({ name }: { name?: string | null }) {
   return <span className="owner-dot" style={{ background: ownerColor(name) }}>{initials(name)}</span>;
+}
+// Click to copy — reused for the email on cards. Stops the click from opening the card.
+function CopyText({ text, children, style }: { text: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  const [c, setC] = useState(false);
+  return (
+    <span className="copyable" title="Click to copy" style={{ cursor: "pointer", ...style }}
+      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(text).then(() => { setC(true); setTimeout(() => setC(false), 1200); }).catch(() => {}); }}>
+      {children}{c && <span style={{ color: "var(--accent)", fontWeight: 700 }}> ✓ Copied</span>}
+    </span>
+  );
 }
 function StageBadge({ l }: { l: Lead }) {
   const s = norm(l.status);
@@ -212,7 +226,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
         <div className="drawer-hd">
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-.01em" }}>{l.company}</div>
-            <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 3 }}>{l.role}</div>
+            <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 3 }}>{fmtRole(l.role)}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <StageBadge l={l} />
               <span className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</span>
@@ -225,7 +239,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
           {l.email && (
             <div style={{ fontSize: 13, marginBottom: 16 }}>
               <span style={{ color: "var(--tx-3)" }}>Email · </span>
-              <span style={{ fontWeight: 600 }}>{l.email}</span>
+              <CopyText text={l.email} style={{ fontWeight: 600 }}>{l.email}</CopyText>
               {l.email_confidence && <span style={{ color: "var(--tx-3)" }}> — {l.email_confidence}</span>}
             </div>
           )}
@@ -249,11 +263,11 @@ function RowCard({ l, onOpen, onAction }: { l: Lead; onOpen: (l: Lead) => void; 
         <div className="co">{l.company}</div>
         <div className="co-sub"><StageBadge l={l} />{l.opened && <span className="opened">👁</span>}</div>
       </div>
-      <div className="role">{l.role || "—"}</div>
+      <div className="role">{fmtRole(l.role)}</div>
       <div className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</div>
       <div>{l.sprint_name ? <span className="badge sprint">{l.sprint_name}</span> : "—"}</div>
       <div className="email-cell">
-        {l.email ? <><div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{l.email}</div><div className="conf">{l.email_confidence}</div></>
+        {l.email ? <><CopyText text={l.email} style={{ overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{l.email}</CopyText><div className="conf">{l.email_confidence}</div></>
           : <span style={{ color: "var(--tx-3)" }}>no email yet</span>}
       </div>
       <div className="actions-cell" onClick={(e) => e.stopPropagation()}>
@@ -318,7 +332,7 @@ function BoardLayout({ rows, onOpen }: { rows: Lead[]; onOpen: (l: Lead) => void
               {items.map((l) => (
                 <div className="mini" key={l.id} onClick={() => onOpen(l)}>
                   <div className="co">{l.company}</div>
-                  <div className="role">{l.role || "—"}</div>
+                  <div className="role">{fmtRole(l.role)}</div>
                   <div className="mini-foot"><span className="owner-cell"><OwnerDot name={l.owner} /></span><TodoBadge l={l} /></div>
                 </div>
               ))}
@@ -342,7 +356,7 @@ function SplitLayout({ rows, sel, setSel, onAction }: { rows: Lead[]; sel: numbe
           <div key={l.id} className={"srow" + (cur && l.id === cur.id ? " sel" : "")} onClick={() => setSel(l.id)}>
             <div style={{ minWidth: 0 }}>
               <div className="co">{l.company}</div>
-              <div className="role" style={{ margin: "2px 0 6px", WebkitLineClamp: 1 }}>{l.role}</div>
+              <div className="role" style={{ margin: "2px 0 6px", WebkitLineClamp: 1 }}>{fmtRole(l.role)}</div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}><StageBadge l={l} /><TodoBadge l={l} /></div>
             </div>
             <span className="owner-cell"><OwnerDot name={l.owner} /></span>
@@ -353,7 +367,7 @@ function SplitLayout({ rows, sel, setSel, onAction }: { rows: Lead[]; sel: numbe
         <div className="detail">
           <div className="detail-hd">
             <div style={{ fontWeight: 800, fontSize: 17 }}>{cur.company}</div>
-            <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 2 }}>{cur.role}</div>
+            <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 2 }}>{fmtRole(cur.role)}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <span className="owner-cell"><OwnerDot name={cur.owner} />{cur.owner}</span>
               {cur.email && <span style={{ fontSize: 12.5, color: "var(--tx-2)" }}>{cur.email}</span>}
