@@ -236,29 +236,12 @@ export async function POST(req: Request) {
 
     let updated = 0, reassigned = 0, scheduledN = 0, reverted = 0;
     for (const l of leads) {
-      const hit = match(l, byEmail, byDomain);
+      const hit = match(l, byEmail, byDomain);          // actually sent (confirmed)
+      const sHit = match(l, schedByEmail, schedByDomain); // queued in Drafts (scheduled)
 
-      // A queued (scheduled) send that hasn't actually gone out yet.
-      if (hit.touches === 0) {
-        const sHit = match(l, schedByEmail, schedByDomain);
-        if (sHit.touches > 0) {
-          // Mark Sent (so it won't be re-emailed), flagged scheduled=true (provisional).
-          const promoteS = !l.status_locked && l.status === "New";
-          const so = (sHit.sender && !l.owner_locked && sHit.sender !== l.owner) ? sHit.sender : null;
-          if (so) reassigned++;
-          await q(
-            `update leads set status = case when $2 then 'Sent' else status end,
-                              scheduled = true,
-                              last_activity = greatest(last_activity, $3::date),
-                              owner = coalesce($4, owner), updated_at = now()
-             where id = $1`,
-            [l.id, promoteS, sHit.last ? String(sHit.last).slice(0, 10) : null, so]
-          );
-          scheduledN++;
-          continue;
-        }
-        // Was provisionally Sent from a schedule that's now gone (cancelled) and never
-        // actually sent → revert to New on this update. (Manual/locked leads untouched.)
+      if (hit.touches === 0 && sHit.touches === 0) {
+        // Nothing sent or scheduled. If it was provisionally Sent from a schedule that's
+        // now gone (cancelled, never sent), revert it to New. Manual/locked leads untouched.
         if (l.scheduled && l.status === "Sent" && !l.status_locked) {
           await q(`update leads set status = 'New', scheduled = false, updated_at = now() where id = $1`, [l.id]);
           reverted++;
@@ -266,23 +249,30 @@ export async function POST(req: Request) {
         continue;
       }
 
+      // A pending scheduled draft (first email OR follow-up) flags the lead so it drops
+      // out of the "to send / follow-up due" pile — its send date pushes last_activity so
+      // it isn't nagged. sent_count only advances on a CONFIRMED send (hit).
+      const isScheduled = sHit.touches > 0;
       const promote = !l.status_locked && l.status === "New";
-      // OWNER = whoever actually sent the most recent email. Skip if a rep manually
-      // reassigned this lead (owner_locked) or the sender is already the owner.
-      const newOwner = (hit.sender && !l.owner_locked && hit.sender !== l.owner) ? hit.sender : null;
+      const sender = hit.sender || sHit.sender || null;
+      const newOwner = (sender && !l.owner_locked && sender !== l.owner) ? sender : null;
       if (newOwner) reassigned++;
+      // latest relevant date (confirmed send or scheduled send-time)
+      const dates = [hit.last, sHit.last].filter(Boolean).map((d) => String(d).slice(0, 10)).sort();
+      const lastDate = dates.length ? dates[dates.length - 1] : null;
+
       await q(
         `update leads set
            sent_count    = greatest(sent_count, $2),
            status        = case when $3 then 'Sent' else status end,
-           scheduled     = false,
+           scheduled     = $6,
            last_activity = greatest(last_activity, $4::date),
            owner         = coalesce($5, owner),
            updated_at    = now()
          where id = $1`,
-        [l.id, hit.touches, promote, hit.last ? String(hit.last).slice(0, 10) : null, newOwner]
+        [l.id, hit.touches, promote, lastDate, newOwner, isScheduled]
       );
-      updated++;
+      if (isScheduled) scheduledN++; else updated++;
     }
     return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, reassigned, scheduled: scheduledN, reverted, sentFolders, hubspot: !!token });
   } catch (e: any) {
