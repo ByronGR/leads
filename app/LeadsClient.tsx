@@ -13,7 +13,7 @@ type Lead = {
   // Either one array (single sequence) OR an object keyed by source (per-source sequences).
   steps?: Step[] | Record<string, Step[]> | null;
   gen_subject?: string | null; gen_body?: string | null;
-  source?: string | null; calc_clicked?: string | null; updated_at?: string | null;
+  source?: string | null; calc_clicked?: string | null; updated_at?: string | null; scheduled?: boolean;
 };
 type Step = { subject?: string; body?: string };
 
@@ -128,6 +128,7 @@ function CopyText({ text, children, style }: { text: string; children: React.Rea
 }
 function StageBadge({ l }: { l: Lead }) {
   const s = norm(l.status);
+  if (l.scheduled && l.status === "Sent") return <span className="badge b-Sent" title="Email scheduled to send later">⏱ Scheduled</span>;
   const txt = l.status === "No" ? "Not interested" : (s === "Sent" && l.sent_count > 0 ? `Sent · touch ${l.sent_count}` : s);
   return <span className={"badge b-" + s}>{txt}</span>;
 }

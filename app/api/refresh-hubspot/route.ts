@@ -122,6 +122,41 @@ async function sentFolderMaps(token: string) {
   return ok ? { byEmail, byDomain } : null;
 }
 
+// Read each rep's DRAFTS folder for emails with a deferred/scheduled send time
+// (PidTagDeferredSendTime, "SystemTime 0x3FEF") — i.e. queued to send later. These
+// count as "we've committed to emailing this lead" so it won't be re-sent, but they
+// stay provisional: if the schedule is cancelled they revert on the next refresh.
+async function scheduledMaps(token: string) {
+  const byEmail: Record<string, Hit> = {};
+  const byDomain: Record<string, Hit> = {};
+  const filt = encodeURIComponent("id eq 'SystemTime 0x3FEF'");
+  for (const rep of REP_MAILBOXES) {
+    const sender = REP_NAME[rep] || null;
+    let url: string | undefined =
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(rep)}/mailFolders/drafts/messages` +
+      `?$top=100&$select=toRecipients,ccRecipients&$expand=singleValueExtendedProperties($filter=${filt})`;
+    for (let page = 0; page < 3 && url; page++) {
+      const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) break;
+      const data: any = await res.json();
+      for (const m of data.value || []) {
+        const sv = m.singleValueExtendedProperties || [];
+        if (!sv.length) continue;                 // only drafts with a scheduled send time
+        const ts: string | null = sv[0]?.value || null;
+        for (const r of [...(m.toRecipients || []), ...(m.ccRecipients || [])]) {
+          const addr = (r.emailAddress?.address || "").toLowerCase();
+          const dom = addr.split("@")[1];
+          if (!dom || dom === "nearwork.co") continue;
+          bump(byEmail, addr, ts, sender);
+          bump(byDomain, dom, ts, sender);
+        }
+      }
+      url = data["@odata.nextLink"];
+    }
+  }
+  return { byEmail, byDomain };
+}
+
 function mergeInto(base: Record<string, Hit>, add: Record<string, Hit>) {
   for (const [k, v] of Object.entries(add)) {
     const b = base[k];
@@ -148,8 +183,8 @@ export async function POST(req: Request) {
     // Only the COLD sequence (New / Sent). Once a lead replies (Replied/Deal/Won)
     // it's a live conversation — those emails are NOT follow-ups, so we freeze the
     // count and never touch it here. 'No' is excluded too.
-    const leads = await q<{ id: number; company: string; email: string | null; sent_count: number; status: string; status_locked: boolean; owner: string | null; owner_locked: boolean }>(
-      `select id, company, domain, email, sent_count, status, status_locked, owner, owner_locked
+    const leads = await q<{ id: number; company: string; domain: string | null; email: string | null; sent_count: number; status: string; status_locked: boolean; owner: string | null; owner_locked: boolean; scheduled: boolean }>(
+      `select id, company, domain, email, sent_count, status, status_locked, owner, owner_locked, scheduled
        from leads
        where status in ('New','Sent')`
     );
@@ -163,46 +198,73 @@ export async function POST(req: Request) {
       mergeInto(byEmail, hs.byEmail); mergeInto(byDomain, hs.byDomain);
     }
     // Source 2: each rep's actual Outlook Sent folder (catches everything).
+    // Source 3: each rep's DRAFTS with a scheduled send time (queued, not yet sent).
     let sentFolders = false;
+    let schedByEmail: Record<string, Hit> = {}, schedByDomain: Record<string, Hit> = {};
     const gTok = await graphToken();
     if (gTok) {
       const sf = await sentFolderMaps(gTok);
       if (sf) { sentFolders = true; mergeInto(byEmail, sf.byEmail); mergeInto(byDomain, sf.byDomain); }
+      const sc = await scheduledMaps(gTok);
+      schedByEmail = sc.byEmail; schedByDomain = sc.byDomain;
     }
     if (!token && !sentFolders) {
       return NextResponse.json({ error: "No source configured: set HUBSPOT_TOKEN and/or Microsoft Graph env vars in Vercel", updated: 0 }, { status: 200 });
     }
 
     const slugOf = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    let updated = 0, reassigned = 0;
-    for (const l of leads) {
+    // Match a lead against a recipient map (exact email → domain → stored domain →
+    // company-name slug). Reused for confirmed sends AND scheduled drafts.
+    const match = (l: any, byE: Record<string, Hit>, byD: Record<string, Hit>): Hit => {
       const em = (l.email || "").toLowerCase();
-      let hit: Hit = { touches: 0, last: null };
       if (em) {
         const dom = em.split("@")[1] || "";
-        const exact = byEmail[em];
-        const domain = byDomain[dom];
-        // Exact contact = accurate follow-up count; otherwise a company-level send
-        // still means "contacted" (count it as 1 touch).
-        if (exact && exact.touches > 0) hit = exact;
-        else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last, sender: domain.sender };
-      } else {
-        // No email on the lead. First try the stored domain (catches "Boulevard" whose
-        // domain is joinblvd.com); then fall back to matching the company NAME against
-        // the domains we emailed (e.g. "RF-SMART" ↔ rfsmart.com).
-        const stored = String((l as any).domain || "").toLowerCase().replace(/^www\./, "");
-        const byStored = stored ? byDomain[stored] : undefined;
-        if (byStored && byStored.touches > 0) hit = { touches: 1, last: byStored.last, sender: byStored.sender };
-        else {
-          const slug = slugOf(l.company);
-          if (slug.length >= 4) {
-            for (const [dom, h] of Object.entries(byDomain)) {
-              if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last, sender: h.sender }; break; }
-            }
-          }
+        if (byE[em]?.touches > 0) return byE[em];
+        if (byD[dom]?.touches > 0) return { touches: 1, last: byD[dom].last, sender: byD[dom].sender };
+        return { touches: 0, last: null };
+      }
+      const stored = String(l.domain || "").toLowerCase().replace(/^www\./, "");
+      if (stored && byD[stored]?.touches > 0) return { touches: 1, last: byD[stored].last, sender: byD[stored].sender };
+      const slug = slugOf(l.company);
+      if (slug.length >= 4) {
+        for (const [dom, h] of Object.entries(byD)) {
+          if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) return { touches: 1, last: h.last, sender: h.sender };
         }
       }
-      if (hit.touches === 0) continue;
+      return { touches: 0, last: null };
+    };
+
+    let updated = 0, reassigned = 0, scheduledN = 0, reverted = 0;
+    for (const l of leads) {
+      const hit = match(l, byEmail, byDomain);
+
+      // A queued (scheduled) send that hasn't actually gone out yet.
+      if (hit.touches === 0) {
+        const sHit = match(l, schedByEmail, schedByDomain);
+        if (sHit.touches > 0) {
+          // Mark Sent (so it won't be re-emailed), flagged scheduled=true (provisional).
+          const promoteS = !l.status_locked && l.status === "New";
+          const so = (sHit.sender && !l.owner_locked && sHit.sender !== l.owner) ? sHit.sender : null;
+          if (so) reassigned++;
+          await q(
+            `update leads set status = case when $2 then 'Sent' else status end,
+                              scheduled = true,
+                              last_activity = greatest(last_activity, $3::date),
+                              owner = coalesce($4, owner), updated_at = now()
+             where id = $1`,
+            [l.id, promoteS, sHit.last ? String(sHit.last).slice(0, 10) : null, so]
+          );
+          scheduledN++;
+          continue;
+        }
+        // Was provisionally Sent from a schedule that's now gone (cancelled) and never
+        // actually sent → revert to New on this update. (Manual/locked leads untouched.)
+        if (l.scheduled && l.status === "Sent" && !l.status_locked) {
+          await q(`update leads set status = 'New', scheduled = false, updated_at = now() where id = $1`, [l.id]);
+          reverted++;
+        }
+        continue;
+      }
 
       const promote = !l.status_locked && l.status === "New";
       // OWNER = whoever actually sent the most recent email. Skip if a rep manually
@@ -213,6 +275,7 @@ export async function POST(req: Request) {
         `update leads set
            sent_count    = greatest(sent_count, $2),
            status        = case when $3 then 'Sent' else status end,
+           scheduled     = false,
            last_activity = greatest(last_activity, $4::date),
            owner         = coalesce($5, owner),
            updated_at    = now()
@@ -221,7 +284,7 @@ export async function POST(req: Request) {
       );
       updated++;
     }
-    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, reassigned, sentFolders, hubspot: !!token });
+    return NextResponse.json({ ok: true, checked: leads.length, sends: Object.keys(byEmail).length, updated, reassigned, scheduled: scheduledN, reverted, sentFolders, hubspot: !!token });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

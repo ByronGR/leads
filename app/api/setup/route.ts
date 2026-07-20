@@ -53,6 +53,7 @@ alter table sprints add column if not exists steps jsonb;
 -- the Sprint template is the fallback / drives follow-ups.
 alter table leads add column if not exists gen_subject text;
 alter table leads add column if not exists gen_body text;
+alter table leads add column if not exists scheduled boolean default false;
 -- Which lead SOURCE the company came from: 'active' (hiring now), 'hard-to-fill'
 -- (role open a long time), 'recently-placed' (posting just closed). Tracked so the
 -- Sprint view can compare reply rate by source.
