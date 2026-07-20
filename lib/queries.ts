@@ -10,10 +10,10 @@ export async function leadsWithSprint() {
             l.sent_count, l.ab_variant, l.why_now, l.job_url, l.last_activity,
             l.opened, l.opened_at, l.first_name, l.contact_name, l.lead_date,
             l.gen_subject, l.gen_body, l.source, l.calc_clicked, l.updated_at, l.scheduled,
-            s.name as sprint_name, s.subject_tpl, s.body_tpl, s.steps
+            s.name as sprint_name
      from leads l
      left join lateral (
-       select name, subject_tpl, body_tpl, steps
+       select name
        from sprints
        -- Un-emailed (New) leads always get the CURRENT sprint's copy; already-contacted
        -- leads stay on the sprint that was live when they were first emailed.

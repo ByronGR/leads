@@ -422,17 +422,21 @@ export default function LeadsClient() {
     try {
       const [lr, sr, xr] = await Promise.all([fetch("/api/leads", { cache: "no-store" }), fetch("/api/sprints", { cache: "no-store" }), fetch("/api/sources", { cache: "no-store" })]);
       const ld: Lead[] = lr.ok ? await lr.json() : [];
-      setLeads(ld);
-      setSprints(sr.ok ? await sr.json() : []);
+      const sp: any[] = sr.ok ? await sr.json() : [];
+      setSprints(sp);
       setSourcePerf(xr.ok ? await xr.json() : []);
-      // "Updated" = the real time the data last changed on the server (max updated_at),
-      // not the moment this page fetched it — so it doesn't drift on the 60s auto-reload.
+      // The sprint templates (steps/subject_tpl/body_tpl) are the SAME for every lead in a
+      // sprint — so we fetch them once here (via /api/sprints) and attach them client-side
+      // instead of the DB shipping the whole template on all ~430 lead rows every reload.
+      const tmap: Record<string, any> = {};
+      for (const x of sp) tmap[x.name] = { steps: x.steps, subject_tpl: x.subject_tpl, body_tpl: x.body_tpl };
+      setLeads(ld.map((l) => ({ ...l, ...(tmap[l.sprint_name || ""] || {}) })));
       const maxTs = ld.reduce((m, l) => Math.max(m, l.updated_at ? new Date(l.updated_at).getTime() : 0), 0);
       setUpdatedAt(maxTs || Date.now());
     } finally { setLoading(false); setRefreshing(false); }
   }
   useEffect(() => { load(); }, []);
-  useEffect(() => { const id = setInterval(() => load(true), 60000); return () => clearInterval(id); }, []);
+  useEffect(() => { const id = setInterval(() => load(true), 300000); return () => clearInterval(id); }, []);
 
   // preferences
   useEffect(() => {
