@@ -149,7 +149,7 @@ export async function POST(req: Request) {
     // it's a live conversation — those emails are NOT follow-ups, so we freeze the
     // count and never touch it here. 'No' is excluded too.
     const leads = await q<{ id: number; company: string; email: string | null; sent_count: number; status: string; status_locked: boolean; owner: string | null; owner_locked: boolean }>(
-      `select id, company, email, sent_count, status, status_locked, owner, owner_locked
+      `select id, company, domain, email, sent_count, status, status_locked, owner, owner_locked
        from leads
        where status in ('New','Sent')`
     );
@@ -187,12 +187,18 @@ export async function POST(req: Request) {
         if (exact && exact.touches > 0) hit = exact;
         else if (domain && domain.touches > 0) hit = { touches: 1, last: domain.last, sender: domain.sender };
       } else {
-        // No email on the lead — match by company name against the domains we
-        // actually emailed (e.g. "RF-SMART" ↔ rfsmart.com). Exact slug match only.
-        const slug = slugOf(l.company);
-        if (slug.length >= 4) {
-          for (const [dom, h] of Object.entries(byDomain)) {
-            if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last, sender: h.sender }; break; }
+        // No email on the lead. First try the stored domain (catches "Boulevard" whose
+        // domain is joinblvd.com); then fall back to matching the company NAME against
+        // the domains we emailed (e.g. "RF-SMART" ↔ rfsmart.com).
+        const stored = String((l as any).domain || "").toLowerCase().replace(/^www\./, "");
+        const byStored = stored ? byDomain[stored] : undefined;
+        if (byStored && byStored.touches > 0) hit = { touches: 1, last: byStored.last, sender: byStored.sender };
+        else {
+          const slug = slugOf(l.company);
+          if (slug.length >= 4) {
+            for (const [dom, h] of Object.entries(byDomain)) {
+              if (h.touches > 0 && slugOf(dom.split(".")[0]) === slug) { hit = { touches: 1, last: h.last, sender: h.sender }; break; }
+            }
           }
         }
       }

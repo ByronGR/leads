@@ -26,17 +26,25 @@ export async function POST(req: Request) {
     let n = 0;
     for (const l of leads || []) {
       if (!l.company) continue;
-      // Dedupe case/punctuation-insensitively: if a row already exists for this
-      // company under different casing/spacing (e.g. "Zoo" vs "zoo"), update THAT
-      // row instead of inserting a duplicate.
-      const norm = String(l.company).toLowerCase().replace(/[^a-z0-9]/g, "");
-      const existing = await q<{ company: string }>(
-        `select company from leads
-         where lower(regexp_replace(company, '[^a-zA-Z0-9]', '', 'g')) = $1
-         limit 1`,
-        [norm]
-      );
-      const company = existing[0]?.company || l.company;
+      // Resolve to an EXISTING row so we never create a duplicate. Prefer matching by
+      // DOMAIN (same company, different name — "Boulevard" vs "Joinblvd"); fall back to
+      // case/punctuation-insensitive company name ("Zoo" vs "zoo").
+      const dom = String(l.domain || "").toLowerCase().replace(/^www\./, "");
+      let company = l.company;
+      if (dom && dom.includes(".")) {
+        const byDom = await q<{ company: string }>(`select company from leads where lower(domain) = $1 limit 1`, [dom]);
+        if (byDom[0]) company = byDom[0].company;
+      }
+      if (company === l.company) {
+        const norm = String(l.company).toLowerCase().replace(/[^a-z0-9]/g, "");
+        const existing = await q<{ company: string }>(
+          `select company from leads
+           where lower(regexp_replace(company, '[^a-zA-Z0-9]', '', 'g')) = $1
+           limit 1`,
+          [norm]
+        );
+        company = existing[0]?.company || l.company;
+      }
       await q(
         `insert into leads
            (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source)

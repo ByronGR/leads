@@ -21,12 +21,19 @@ export async function POST(req: Request) {
   }
   try {
     const rows = await q<any>(
-      `select id, company, status, sent_count, email, contact_name, first_name,
+      `select id, company, domain, status, sent_count, email, contact_name, first_name,
               gen_subject, gen_body, source, owner from leads`
     );
-    // group by normalized name
+    // Group by DOMAIN when we have one (from the email or the stored domain) — this
+    // catches the same company under two different names (e.g. "Boulevard" vs its
+    // domain "Joinblvd"). Fall back to the normalized company name otherwise.
+    const dedupeKey = (r: any) => {
+      const emDom = (r.email || "").toLowerCase().split("@")[1] || "";
+      const dom = (emDom || r.domain || "").toLowerCase().replace(/^www\./, "");
+      return dom && dom.includes(".") ? "d:" + dom : "c:" + norm(r.company);
+    };
     const groups: Record<string, any[]> = {};
-    for (const r of rows) (groups[norm(r.company)] ||= []).push(r);
+    for (const r of rows) (groups[dedupeKey(r)] ||= []).push(r);
 
     const merged: string[] = [];
     let deleted = 0;

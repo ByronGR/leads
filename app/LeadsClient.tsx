@@ -289,9 +289,10 @@ function FocusLayout({ rows, onOpen, onAction }: { rows: Lead[]; onOpen: (l: Lea
     const send: Lead[] = [], follow: Lead[] = [], waiting: Lead[] = [], done: Lead[] = [];
     rows.forEach((l) => {
       const a = actionFor(l);
+      if (l.status === "No") return;                 // Not interested — hidden from the working views
       if (a && a.kind === "send") send.push(l);
       else if (a) follow.push(l);
-      else if (l.status === "No" || norm(l.status) === "Replied") done.push(l);
+      else if (norm(l.status) === "Replied") done.push(l);
       else waiting.push(l);
     });
     return [
