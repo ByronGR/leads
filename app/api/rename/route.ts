@@ -16,20 +16,31 @@ export async function POST(req: Request) {
   }
   try {
     const { map } = await req.json();
-    let renamed = 0; const done: string[] = [];
+    let renamed = 0, merged = 0;
     for (const [oldName, newName] of Object.entries(map || {})) {
       const nn = String(newName || "").trim();
-      if (!oldName || !nn || oldName === nn) continue;
-      const rows = await q<{ id: number }>(
-        `update leads set company = $2, updated_at = now()
-         where lower(regexp_replace(company,'[^a-zA-Z0-9]','','g')) = $1
-           and company <> $2
-         returning id`,
+      if (!oldName || !nn) continue;
+      // rows currently under the old (lowercase) spelling
+      const rows = await q<{ id: number; company: string }>(
+        `select id, company from leads
+         where lower(regexp_replace(company,'[^a-zA-Z0-9]','','g')) = $1 and company <> $2`,
         [norm(oldName), nn]
       );
-      if (rows.length) { renamed += rows.length; done.push(`${oldName} → ${nn}`); }
+      if (!rows.length) continue;
+      // does a row already hold the corrected name?
+      const existing = await q<{ id: number }>(`select id from leads where company = $1 limit 1`, [nn]);
+      for (const r of rows) {
+        if (existing[0]) {
+          // proper-named row already exists → drop this lowercase duplicate
+          await q(`delete from leads where id = $1`, [r.id]);
+          merged++;
+        } else {
+          await q(`update leads set company = $2, updated_at = now() where id = $1`, [r.id, nn]);
+          renamed++;
+        }
+      }
     }
-    return NextResponse.json({ ok: true, renamed, done });
+    return NextResponse.json({ ok: true, renamed, merged });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
