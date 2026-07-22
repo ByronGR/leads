@@ -14,6 +14,7 @@ type Lead = {
   steps?: Step[] | Record<string, Step[]> | null;
   gen_subject?: string | null; gen_body?: string | null;
   source?: string | null; calc_clicked?: string | null; updated_at?: string | null; scheduled?: boolean;
+  ab_variant?: string | null;   // A/B test v1: 'A' | 'B' | 'warm-followup'
 };
 type Step = { subject?: string; body?: string };
 
@@ -102,10 +103,13 @@ function messageFor(l: Lead): { label: string; subject?: string; body?: string; 
   const src = l.source || "active";
   const seq: Step[] = Array.isArray(raw) ? raw
     : (raw && (raw[src] || raw["active"])) || [{ subject: l.subject_tpl || "", body: l.body_tpl || "" }];
-  // First touch: legacy sprints use the routine's personalized body; per-source sprints
-  // use the source's tailored copy. Never blank (falls back to template).
-  if (idx === 0 && !perSource && l.gen_body) {
-    return { label: "First email", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
+  // The per-lead body (gen_subject/gen_body) is authoritative when present: during
+  // the A/B test window it holds the FROZEN copy — the variant-specific first touch
+  // for never-emailed leads, or the follow-up bump for warm openers. Show it as the
+  // first email (idx 0) or the follow-up (idx ≥ 1). Falls through to the sprint
+  // sequence only for leads that have no per-lead body.
+  if (l.gen_body) {
+    return { label: idx === 0 ? "First email" : "Follow-up", subject: l.gen_subject || render(l.subject_tpl, l), body: stripSignature(l.gen_body) };
   }
   if (idx >= seq.length) return { label: "Sequence complete", note: "Every message in this Sprint's sequence has been sent." };
   const step = seq[idx];
@@ -125,6 +129,14 @@ function CopyText({ text, children, style }: { text: string; children: React.Rea
       {children}{c && <span style={{ color: "var(--accent)", fontWeight: 700 }}> ✓ Copied</span>}
     </span>
   );
+}
+// A/B test v1 variant chip. A = cost claim in · B = screening/quality · warm = follow-up bump.
+function VariantBadge({ v }: { v?: string | null }) {
+  if (!v) return null;
+  const wf = v === "warm-followup";
+  const label = wf ? "warm follow-up" : `Variant ${v}`;
+  const bg = wf ? "#8a6d1f" : v === "A" ? "#7A5AE0" : "#12866E";
+  return <span className="badge" title="A/B test v1 (Jul 22–Aug 7)" style={{ background: bg, color: "#fff" }}>{label}</span>;
 }
 function StageBadge({ l }: { l: Lead }) {
   const s = norm(l.status);
@@ -230,6 +242,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
             <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 3 }}>{fmtRole(l.role)}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <StageBadge l={l} />
+              <VariantBadge v={l.ab_variant} />
               <span className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</span>
               {l.opened && <span className="opened">👁 Opened {String(l.opened_at || "").slice(5, 10)}</span>}
             </div>

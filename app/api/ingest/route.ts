@@ -47,8 +47,8 @@ export async function POST(req: Request) {
       }
       await q(
         `insert into leads
-           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source, ab_variant)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          on conflict (company) do update set
            owner            = case when leads.owner_locked then leads.owner
                                    else coalesce(nullif(excluded.owner, ''), leads.owner) end,
@@ -77,6 +77,9 @@ export async function POST(req: Request) {
            gen_subject      = coalesce(nullif(excluded.gen_subject, ''), leads.gen_subject),
            gen_body         = coalesce(nullif(excluded.gen_body, ''), leads.gen_body),
            source           = coalesce(nullif(excluded.source, ''), leads.source),
+           -- A/B test variant (v1 spec): 'A' | 'B' | 'warm-followup'. HubSpot stays
+           -- source of truth for reply/opt-out pulls; this mirrors it in-app.
+           ab_variant       = coalesce(nullif(excluded.ab_variant, ''), leads.ab_variant),
            updated_at       = now()`,
         [
           company, l.domain ?? null, l.owner ?? null, l.role ?? null, l.email ?? null,
@@ -85,6 +88,7 @@ export async function POST(req: Request) {
           l.opened ?? false, l.opened_at ?? null,
           l.first_name ?? null, l.contact_name ?? null, l.lead_date ?? null,
           l.gen_subject ?? null, l.gen_body ?? null, l.source ?? null,
+          l.ab_variant ?? null,
         ]
       );
       n++;
