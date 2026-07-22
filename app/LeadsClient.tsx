@@ -242,7 +242,7 @@ function Drawer({ l, onClose, onAction }: { l: Lead; onClose: () => void; onActi
             <div style={{ color: "var(--tx-2)", fontSize: 13, marginTop: 3 }}>{fmtRole(l.role)}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
               <StageBadge l={l} />
-              <VariantBadge v={l.ab_variant} />
+              {!["Replied", "Deal", "Won", "No"].includes(l.status) && <VariantBadge v={l.ab_variant} />}
               <span className="owner-cell"><OwnerDot name={l.owner} />{l.owner}</span>
               {l.opened && <span className="opened">👁 Opened {String(l.opened_at || "").slice(5, 10)}</span>}
             </div>
