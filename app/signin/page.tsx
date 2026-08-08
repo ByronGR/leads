@@ -46,6 +46,57 @@ function SignInInner() {
           Sign in with Microsoft
         </button>
 
+        {/* Byron 2026-08-08: Microsoft SSO only works on redirect URIs registered
+            in Entra, so it fails on Vercel PREVIEW urls. Email + passcode is the
+            way in anywhere — this is what unblocks reviewing a branch deploy. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 16px" }}>
+          <div style={{ flex: 1, height: 1, background: "#232a37" }} />
+          <div style={{ color: "#5f6a7d", fontSize: 11, letterSpacing: ".06em" }}>OR</div>
+          <div style={{ flex: 1, height: 1, background: "#232a37" }} />
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget as HTMLFormElement);
+            signIn("passcode", {
+              email: String(f.get("email") || ""),
+              passcode: String(f.get("passcode") || ""),
+              callbackUrl: "/",
+            });
+          }}
+          style={{ display: "grid", gap: 10, textAlign: "left" }}
+        >
+          <input
+            name="email" type="email" required autoComplete="username"
+            placeholder="you@nearwork.co"
+            style={{
+              width: "100%", padding: "11px 12px", borderRadius: 10,
+              border: "1px solid #232a37", background: "#0f131b", color: "#e8ebf2",
+              fontSize: 14, outline: "none",
+            }}
+          />
+          <input
+            name="passcode" type="password" required autoComplete="current-password"
+            placeholder="Passcode"
+            style={{
+              width: "100%", padding: "11px 12px", borderRadius: 10,
+              border: "1px solid #232a37", background: "#0f131b", color: "#e8ebf2",
+              fontSize: 14, outline: "none",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              width: "100%", padding: "12px 16px", borderRadius: 10, border: "none",
+              background: "#12866E", color: "#fff", fontWeight: 600, fontSize: 15,
+              cursor: "pointer",
+            }}
+          >
+            Sign in
+          </button>
+        </form>
+
         <div style={{ color: "#5f6a7d", fontSize: 12, marginTop: 20 }}>
           Access is restricted to the Nearwork team.
         </div>
