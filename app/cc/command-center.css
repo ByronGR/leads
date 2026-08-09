@@ -208,14 +208,10 @@
 
 /* ---------------------------------------------------------------------------
    Byron 2026-08-09: "a lot of white on the right."
-   .main is capped at 1180px and left-aligned, so on a wide monitor everything
-   past that is dead space. Centre it inside the content column and let it use
-   a little more room on large screens — proportions from the handoff are kept,
-   the leftover space is just balanced instead of dumped on one side.
+   .main is a GRID ITEM. Auto inline margins alone make a grid item size to its
+   content instead of filling the track — which collapsed the page into a narrow
+   strip. width:100% restores the stretch, max-width caps it, and the auto
+   margins then centre what is left. Nothing else from the handoff changes.
    --------------------------------------------------------------------------- */
-.main { margin-inline: auto; }
-@media (min-width: 1500px) {
-  .main { max-width: 1360px; }
-  /* the activity rail can take the extra width rather than the cards stretching */
-  .cols { grid-template-columns: minmax(0, 1fr) 380px; }
-}
+.main { width: 100%; margin-inline: auto; }
+@media (min-width: 1500px) { .main { max-width: 1340px; } }
