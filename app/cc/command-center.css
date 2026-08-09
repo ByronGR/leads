@@ -205,3 +205,17 @@
 
 @media (max-width: 1080px) { .cols { grid-template-columns: 1fr; } .day-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .side { position: static; height: auto; } .callcard { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------------------
+   Byron 2026-08-09: "a lot of white on the right."
+   .main is capped at 1180px and left-aligned, so on a wide monitor everything
+   past that is dead space. Centre it inside the content column and let it use
+   a little more room on large screens — proportions from the handoff are kept,
+   the leftover space is just balanced instead of dumped on one side.
+   --------------------------------------------------------------------------- */
+.main { margin-inline: auto; }
+@media (min-width: 1500px) {
+  .main { max-width: 1360px; }
+  /* the activity rail can take the extra width rather than the cards stretching */
+  .cols { grid-template-columns: minmax(0, 1fr) 380px; }
+}

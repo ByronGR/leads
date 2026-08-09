@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   Lead, actionFor, nextStep, norm, zoneChip, theirTime, windowHere, callWindow,
-  MAX_CALL_ATTEMPTS,
+  MAX_CALL_ATTEMPTS, FU_DAILY, DAILY_SEND_CAP,
 } from "@/lib/cadence";
 import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
@@ -74,7 +74,23 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
   }
 
   const callQueue = useMemo(() => leads.filter((l) => actionFor(l)?.kind === "call"), [leads]);
-  const emailQueue = useMemo(() => leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; }), [leads]);
+  // "Emails due" is A DAY'S WORK, not everything technically overdue. The engine
+  // sends at most FU_DAILY follow-ups plus new touches up to DAILY_SEND_CAP, so
+  // the tile mirrors that — otherwise it read 98 when Byron sends 55. Oldest
+  // follow-ups first, exactly as daily_send_plan.py orders them.
+  const emailQueue = useMemo(() => {
+    const due = leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; });
+    const follows = due
+      .filter((l) => actionFor(l)?.kind === "follow")
+      .sort((a, b) => String(a.last_activity || "").localeCompare(String(b.last_activity || "")))
+      .slice(0, FU_DAILY);
+    const fresh = due.filter((l) => actionFor(l)?.kind === "send");
+    return [...follows, ...fresh].slice(0, DAILY_SEND_CAP);
+  }, [leads]);
+  const emailBacklog = useMemo(
+    () => leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; }).length,
+    [leads]
+  );
   const replies = useMemo(() => leads.filter((l) => norm(l.status) === "Replied"), [leads]);
   const needs = useMemo(() => leads.filter((l) => actionFor(l)), [leads]);
 
@@ -116,7 +132,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
       </aside>
 
       <main className="main">
-        {view === "day" && <MyDay {...{ callQueue, emailQueue, replies, activity: data.activity || [], go: setView, onOpen: setDrawer, onLog: setLogging, refresh }} />}
+        {view === "day" && <MyDay {...{ callQueue, emailQueue, emailBacklog, replies, activity: data.activity || [], go: setView, onOpen: setDrawer, onLog: setLogging, refresh }} />}
         {view === "calls" && <CallsView {...{ queue: callQueue, me: data.me, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "leads" && <LeadsView {...{ leads, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "ab" && <ABView variants={data.variants || []} />}
@@ -260,7 +276,7 @@ function ActivityFeed({ items }: { items: Activity[] }) {
 
 /* ----------------------------------------------------------------- My Day */
 
-function MyDay({ callQueue, emailQueue, replies, activity, go, onOpen, onLog, refresh }: any) {
+function MyDay({ callQueue, emailQueue, emailBacklog, replies, activity, go, onOpen, onLog, refresh }: any) {
   const [tab, setTab] = useState<"calls" | "emails">("calls");
   const today = new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
   return (
@@ -280,7 +296,7 @@ function MyDay({ callQueue, emailQueue, replies, activity, go, onOpen, onLog, re
         </div>
         <div className="tile" onClick={() => setTab("emails")}>
           <div className="n">{emailQueue.length}</div><div className="l">Emails due</div>
-          <div className="h">First touches and follow-ups</div>
+          <div className="h">{emailBacklog > emailQueue.length ? `${emailBacklog} due overall · today\u2019s cap` : "First touches and follow-ups"}</div>
         </div>
         <div className="tile" onClick={() => go("leads")}>
           <div className="n">{replies.length}</div><div className="l">Replies to handle</div>

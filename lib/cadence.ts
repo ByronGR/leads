@@ -23,6 +23,12 @@ export const MAX_CALL_ATTEMPTS = 3; // call_list.MAX_ATTEMPTS
 export const EMAIL_TOUCHES = 3;     // first + FU1 + FU2 (Variant C)
 export const APOLLO_CADENCE = [0, 3, 7, 12];
 
+// What one person actually sends in a day, mirroring daily_send_plan.py.
+// Without this the "Emails due" tile counted every technically-due lead (98) —
+// true, but not a day's work, and not what Byron would send. (Byron 2026-08-09)
+export const DAILY_SEND_CAP = 55;   // daily_send_plan.DAILY_SEND_CAP
+export const FU_DAILY = 30;         // daily_send_plan.FU_DAILY
+
 export const MY_TZ = -5;            // Bogotá (COT)
 
 export type Step = {
@@ -84,11 +90,26 @@ function addBizDays(from: Date, n: number): Date {
   return d;
 }
 
+/**
+ * Postgres hands back "2026-08-04T00:00:00.000Z". `new Date()` on that lands at
+ * 19:00 the PREVIOUS day in Bogotá, so every lead looked a day older than it was
+ * and follow-ups fired early (Byron 2026-08-09: "why does it show 98 due"). Read
+ * the calendar date off the string and build a LOCAL date instead.
+ */
+export function localDate(iso: string | Date | null): Date | null {
+  if (!iso) return null;
+  if (iso instanceof Date) return iso;
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export function bizDaysSince(iso: string | null): number {
-  if (!iso) return 99;
-  const start = new Date(iso);
-  if (isNaN(start.getTime())) return 99;
+  const start = localDate(iso);
+  if (!start) return 99;
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   let n = 0;
   const cur = new Date(start);
   while (cur < today) {
@@ -104,7 +125,7 @@ export function bizDaysSince(iso: string | null): number {
  */
 export function schedule(l: Lead): Step[] {
   const anchor = l.started || l.last_activity;
-  const base = anchor ? new Date(anchor) : new Date();
+  const base = localDate(anchor) || new Date();
   const sent = l.sent_count || 0;
   const calls = l.call_count || 0;
 
