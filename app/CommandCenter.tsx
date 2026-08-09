@@ -254,7 +254,7 @@ function LeadRow({ l, onOpen, onLog }: any) {
         </div>
       </div>
       <div className="lr-dots"><TouchDots l={l} /></div>
-      <div className="lr-next"><span className="k">Next</span>{s ? `${s.label} · ${fmtDay(s.due)}` : "done"}</div>
+      <div className={"lr-next" + (a ? " due" : "")}><span className="k">Next</span>{s ? `${s.label} · ${fmtDay(s.due)}` : "done"}</div>
       <div className="actions-cell" onClick={(e) => e.stopPropagation()}>
         <button className="iconbtn" onClick={() => onLog(l)} disabled={l.dnc || !l.phone} title="Log a call">{PhoneIcon}</button>
         <button className={"btn sm" + (a ? " primary" : "")} onClick={() => onOpen(l)}>{MailIcon}{a ? "Email" : "View"}</button>

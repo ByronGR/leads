@@ -218,3 +218,12 @@
 /* A short window (or browser zoom) made the rail taller than 100vh, so the
    footer was cut off. Let it scroll instead of clipping. */
 .side { overflow-y: auto; }
+
+/* Byron 2026-08-09: "I'd like to see more of the next step."
+   The next-step track was 104px, so "Follow-up 1 · Aug 12" clipped to
+   "Follow-up 1 · Au…". Widened to fit the longest real label; the company
+   column (1fr) absorbs the difference. */
+.leadrow { grid-template-columns: 26px minmax(0,1fr) 47px 150px auto; }
+@container main (max-width: 900px) {
+  .leadrow { grid-template-columns: 26px minmax(0,1fr) 47px 120px auto; }
+}
