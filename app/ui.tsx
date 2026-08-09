@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { Lead, repColor, statusLabel, norm, zoneChip, theirTime, windowHere, callWindow, schedule, nextStep, actionFor } from "@/lib/cadence";
+import { messageFor } from "@/lib/copy";
 
 /* ------------------------------------------------------------------ icons */
 const I = (d: string) => (
@@ -81,26 +82,20 @@ export function ZoneCell({ l }: { l: Lead }) {
   );
 }
 
-/** The email a lead should get next — rendered by the pipeline, shown read-only. */
+/** The email to send RIGHT NOW — generated per touch, not the stored first touch. */
 export function EmailPanel({ l }: { l: Lead }) {
   const [all, setAll] = useState(false);
-  if (!l.gen_body) {
-    return <div className="note-box">No copy generated for this lead yet — the daily routine writes it.</div>;
-  }
-  const subject = l.gen_subject || "";
-  const body = l.gen_body;
+  const msg = messageFor(l);
+  if (msg.note) return <div className="note-box">{msg.note}</div>;
   return (
     <div className="composer">
       <div className="panel-h">
-        <span className="t">Next email · {nextStep(l)?.label || "done"}</span>
-        <button
-          className="btn sm"
-          onClick={() => {
-            navigator.clipboard?.writeText(`${subject}\n\n${body}`).then(() => {
-              setAll(true); setTimeout(() => setAll(false), 1300);
-            }).catch(() => {});
-          }}
-        >{all ? "Copied ✓" : "Copy all"}</button>
+        <span className="t">Next email · {msg.label}</span>
+        <button className="btn sm" onClick={() => {
+          navigator.clipboard?.writeText(`${msg.subject}\n\n${msg.body}`).then(() => {
+            setAll(true); setTimeout(() => setAll(false), 1300);
+          }).catch(() => {});
+        }}>{all ? "Copied \u2713" : "Copy all"}</button>
       </div>
       <div className="field">
         <div className="k"><span>To</span></div>
@@ -108,11 +103,11 @@ export function EmailPanel({ l }: { l: Lead }) {
       </div>
       <div className="field">
         <div className="k"><span>Subject</span></div>
-        <Copyable text={subject} className="copyrow">{subject}</Copyable>
+        <Copyable text={msg.subject} className="copyrow">{msg.subject}</Copyable>
       </div>
       <div className="field">
         <div className="k"><span>Message</span></div>
-        <Copyable text={body} className="body">{body}</Copyable>
+        <Copyable text={msg.body} className="body">{msg.body}</Copyable>
       </div>
     </div>
   );

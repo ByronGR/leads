@@ -9,6 +9,7 @@ import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
   PhoneIcon, MailIcon, CloseIcon,
 } from "./ui";
+import { messageFor } from "@/lib/copy";
 
 type Activity = { id: number; actor: string; action: string; note: string; ts: string; company: string };
 type Variant = { variant: string; leads: number; sent: number; opened: number; replied: number; reply_rate: number; open_rate: number };
@@ -216,18 +217,19 @@ function CallCard({ l, rank, onLog, onOpen }: any) {
 
 function MailCard({ l, onOpen }: any) {
   const [c, setC] = useState(false);
+  const msg = messageFor(l);
   return (
     <div className="mailcard" onClick={() => onOpen(l)} style={{ cursor: "pointer" }}>
       <OwnerDot name={l.owner} />
       <div style={{ minWidth: 0 }}>
         <div className="co">{l.company}</div>
-        <div className="subj">{nextStep(l)?.label || "Next"}: {l.gen_subject || l.role}</div>
+        <div className="subj">{msg.label}: {msg.subject || l.role}</div>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <TouchDots l={l} />
         <button className="btn sm" onClick={(e) => {
           e.stopPropagation();
-          navigator.clipboard?.writeText(`${l.gen_subject || ""}\n\n${l.gen_body || ""}`)
+          navigator.clipboard?.writeText(`${msg.subject}\n\n${msg.body}`)
             .then(() => { setC(true); setTimeout(() => setC(false), 1300); }).catch(() => {});
         }}>{c ? "Copied ✓" : "Copy"}</button>
         <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); onOpen(l); }}>{MailIcon}Open</button>
