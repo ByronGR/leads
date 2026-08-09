@@ -124,25 +124,39 @@ export function bizDaysSince(iso: string | null): number {
  * Emails are marked done from sent_count; calls from call_count.
  */
 export function schedule(l: Lead): Step[] {
-  const anchor = l.started || l.last_activity;
-  const base = localDate(anchor) || new Date();
   const sent = l.sent_count || 0;
   const calls = l.call_count || 0;
 
-  const fu1 = addBizDays(base, FU_BIZDAYS);
-  const fu2 = addBizDays(fu1, FU_BIZDAYS);
-  const call1 = addBizDays(fu1, CALL_BUFFER);
-  const call2 = addBizDays(call1, GAP_AFTER_CALL[0]);
-  const call3 = addBizDays(call2, GAP_AFTER_CALL[1]);
+  // Byron 2026-08-09: "if it says send on Aug 11 but I send on Aug 13, adjust
+  // the other days from the last time I sent." So the plan is NOT fixed to the
+  // first touch — every step still to come is measured forward from the most
+  // recent REAL activity. Send late and everything after it slides with you;
+  // send early and it tightens up.
+  const lastEmail = localDate(l.last_activity);
+  const lastCall = localDate(l.last_call_at);
+  const started = localDate(l.started);
+  let cursor =
+    [lastEmail, lastCall].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0]
+    || started || new Date();
 
-  return [
-    { kind: "email", label: "First email", due: base, done: sent >= 1, n: 1 },
-    { kind: "email", label: "Follow-up 1", due: fu1, done: sent >= 2, n: 2 },
-    { kind: "call", label: "First call", due: call1, done: calls >= 1, n: 1 },
-    { kind: "email", label: "Follow-up 2 (final)", due: fu2, done: sent >= 3, n: 3 },
-    { kind: "call", label: "Second call", due: call2, done: calls >= 2, n: 2 },
-    { kind: "call", label: "Third call", due: call3, done: calls >= 3, n: 3 },
+  const plan: { kind: "email" | "call"; label: string; n: number; done: boolean; gap: number }[] = [
+    { kind: "email", label: "First email",         n: 1, done: sent >= 1,  gap: 0 },
+    { kind: "email", label: "Follow-up 1",         n: 2, done: sent >= 2,  gap: FU_BIZDAYS },
+    { kind: "call",  label: "First call",          n: 1, done: calls >= 1, gap: CALL_BUFFER },
+    { kind: "email", label: "Follow-up 2 (final)", n: 3, done: sent >= 3,  gap: FU_BIZDAYS },
+    { kind: "call",  label: "Second call",         n: 2, done: calls >= 2, gap: GAP_AFTER_CALL[0] },
+    { kind: "call",  label: "Third call",          n: 3, done: calls >= 3, gap: GAP_AFTER_CALL[1] },
   ];
+
+  return plan.map((p) => {
+    if (p.done) {
+      // Already happened — anchor it at the last known activity rather than
+      // projecting a date we can't know per-step.
+      return { kind: p.kind, label: p.label, due: cursor, done: true, n: p.n };
+    }
+    cursor = addBizDays(cursor, p.gap);          // chain forward from real activity
+    return { kind: p.kind, label: p.label, due: new Date(cursor), done: false, n: p.n };
+  });
 }
 
 export function nextStep(l: Lead): Step | null {
