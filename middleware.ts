@@ -9,5 +9,5 @@ export default withAuth({
 });
 
 export const config = {
-  matcher: ["/", "/command-center", "/api/leads/:path*", "/api/sprints/:path*", "/api/sources/:path*"],
+  matcher: ["/", "/api/leads/:path*", "/api/sprints/:path*", "/api/sources/:path*"],
 };
