@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
-import { Hanken_Grotesk } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
+import "./cc/command-center.css";
 import Providers from "./providers";
 
-const hanken = Hanken_Grotesk({
+// The handoff specifies Poppins. Its CSS reads --font-hanken (the bundle reused
+// the old stylesheet), so Poppins is bound to that variable rather than editing
+// every rule. Poppins runs visually heavy — 400/500/600 only, no 700/800 default.
+const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600"],
   variable: "--font-hanken",
   display: "swap",
 });
@@ -21,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={hanken.variable}>
+    <html lang="en" className={poppins.variable}>
       <body>
         <Providers>{children}</Providers>
       </body>

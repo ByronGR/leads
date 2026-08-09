@@ -75,7 +75,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
                    ab: data.variants?.length || 0, activity: data.activity?.length || 0 };
 
   return (
-    <div className="app">
+    <div className="shell">
       {/* ------------------------------------------------------------ shell */}
       <aside className="side">
         <div className="brand-row">
@@ -87,10 +87,10 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
         </div>
 
         <nav className="nav">
-          <div className="group-h">TODAY</div>
+          <div className="grp">TODAY</div>
           <NavItem on={view === "day"} onClick={() => setView("day")} label="My Day" n={counts.day} />
           <NavItem on={view === "calls"} onClick={() => setView("calls")} label="Calls" n={counts.calls} />
-          <div className="group-h">PIPELINE</div>
+          <div className="grp">PIPELINE</div>
           <NavItem on={view === "leads"} onClick={() => setView("leads")} label="Leads" n={counts.leads} />
           <NavItem on={view === "ab"} onClick={() => setView("ab")} label="A/B test" />
           <NavItem on={view === "activity"} onClick={() => setView("activity")} label="Activity" />
@@ -156,7 +156,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
 
 function NavItem({ on, onClick, label, n }: { on: boolean; onClick: () => void; label: string; n?: number }) {
   return (
-    <button className={"navitem" + (on ? " on" : "")} onClick={onClick}>
+    <button className={on ? "on" : ""} onClick={onClick}>
       <span>{label}</span>
       {n != null && <span className="n">{n}</span>}
     </button>
@@ -234,9 +234,9 @@ function MyDay({ callQueue, emailQueue, replies, activity, go, onOpen, onCall, o
             {activity.slice(0, 14).map((a: Activity) => (
               <div className="fitem" key={a.id}>
                 <OwnerDot name={a.actor} />
-                <span className="glyph">{a.action === "call" ? "☎" : a.action === "email" ? "✉" : a.action === "callback" ? "＋" : "💬"}</span>
-                <span className="f-txt"><b>{a.company}</b> — {a.note}</span>
-                <span className="meta">{new Date(a.ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                <span>{a.action === "call" ? "☎" : a.action === "email" ? "✉" : a.action === "callback" ? "＋" : "💬"}</span>
+                <span className="txt"><b>{a.company}</b> — {a.note}</span>
+                <span className="when">{new Date(a.ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
               </div>
             ))}
           </div>
@@ -452,9 +452,9 @@ function ActivityView({ activity }: { activity: Activity[] }) {
         {activity.map((a) => (
           <div className="fitem" key={a.id}>
             <OwnerDot name={a.actor} />
-            <span className="glyph">{a.action === "call" ? "☎" : a.action === "email" ? "✉" : a.action === "callback" ? "＋" : "💬"}</span>
-            <span className="f-txt"><b>{a.company}</b> — {a.note}</span>
-            <span className="meta">{new Date(a.ts).toLocaleString()}</span>
+            <span>{a.action === "call" ? "☎" : a.action === "email" ? "✉" : a.action === "callback" ? "＋" : "💬"}</span>
+            <span className="txt"><b>{a.company}</b> — {a.note}</span>
+            <span className="when">{new Date(a.ts).toLocaleString()}</span>
           </div>
         ))}
       </div>

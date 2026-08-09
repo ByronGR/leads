@@ -2,8 +2,6 @@ import { q } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import CommandCenter from "./CommandCenter";
-import "./cc/tokens.css";
-import "./cc/command-center.css";
 
 export const dynamic = "force-dynamic";
 
