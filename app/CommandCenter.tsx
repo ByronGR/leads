@@ -115,19 +115,26 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
           <button className={view === "activity" ? "on" : ""} onClick={() => setView("activity")}>Activity</button>
         </nav>
 
-        <div className="side-foot">
-          <button className="btn sync" onClick={async () => { await fetch("/api/refresh-hubspot").catch(() => {}); await refresh(); setToast("Synced to HubSpot"); }}>
-            Sync to HubSpot
+        {/* .side-foot is a flex ROW by default; the prototype overrides it to a
+            column. Four children in a row overflowed and clipped the bottom. */}
+        <div className="side-foot" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+          <button className="btn sm ghost" style={{ justifyContent: "center" }}
+                  onClick={async () => { await fetch("/api/refresh-hubspot").catch(() => {}); await refresh(); setToast("Synced to HubSpot"); }}>
+            ↻ Sync to HubSpot
           </button>
-          <div className="foot-note">
-            Updated {new Date(data.generated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          <div className="sync">
+            Last sync {new Date(data.generated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Everything lives here first.
           </div>
-          <div className="who">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <OwnerDot name={data.me} />
-            <span style={{ flex: 1 }}>{data.me}</span>
-            <button className="iconbtn" onClick={() => setDark(!dark)} title="Dark mode">{dark ? "☀" : "☾"}</button>
+            <div style={{ minWidth: 0, fontSize: 12 }}>
+              <div style={{ fontWeight: 600 }}>{data.me}</div>
+              <div style={{ color: "var(--tx-3)" }}>SDR · Nearwork</div>
+            </div>
+            <button className="iconbtn" style={{ marginLeft: "auto" }} onClick={() => setDark(!dark)} title="Toggle dark mode">{dark ? "☀" : "🌙"}</button>
           </div>
-          <button className="btn sm ghost" onClick={() => signOut({ callbackUrl: "/signin" })}>Sign out</button>
+          <button className="btn sm ghost" style={{ justifyContent: "center" }}
+                  onClick={() => signOut({ callbackUrl: "/signin" })}>Sign out</button>
         </div>
       </aside>
 

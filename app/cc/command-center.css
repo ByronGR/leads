@@ -215,3 +215,6 @@
    --------------------------------------------------------------------------- */
 .main { width: 100%; margin-inline: auto; }
 @media (min-width: 1500px) { .main { max-width: 1340px; } }
+/* A short window (or browser zoom) made the rail taller than 100vh, so the
+   footer was cut off. Let it scroll instead of clipping. */
+.side { overflow-y: auto; }
