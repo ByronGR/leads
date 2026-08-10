@@ -79,15 +79,24 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
   // sends at most FU_DAILY follow-ups plus new touches up to DAILY_SEND_CAP, so
   // the tile mirrors that — otherwise it read 98 when Byron sends 55. Oldest
   // follow-ups first, exactly as daily_send_plan.py orders them.
-  const emailQueue = useMemo(() => {
+  //
+  // Byron 2026-08-10: "why don't I see the emails I need to send???" — the queue
+  // was ONE flat list with all 30 follow-ups in front, and My Day previewed the
+  // first 6. So the 47 first-touch emails sat at positions 31-55 and were never
+  // on screen. Keep the two kinds SEPARATE and render both.
+  const emailSplit = useMemo(() => {
     const due = leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; });
     const follows = due
       .filter((l) => actionFor(l)?.kind === "follow")
       .sort((a, b) => String(a.last_activity || "").localeCompare(String(b.last_activity || "")))
       .slice(0, FU_DAILY);
-    const fresh = due.filter((l) => actionFor(l)?.kind === "send");
-    return [...follows, ...fresh].slice(0, DAILY_SEND_CAP);
+    // New leads fill whatever the daily cap has left after follow-ups.
+    const fresh = due
+      .filter((l) => actionFor(l)?.kind === "send")
+      .slice(0, Math.max(0, DAILY_SEND_CAP - follows.length));
+    return { fresh, follows, all: [...fresh, ...follows] };
   }, [leads]);
+  const emailQueue = emailSplit.all;
   const emailBacklog = useMemo(
     () => leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; }).length,
     [leads]
@@ -140,7 +149,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
       </aside>
 
       <main className="main">
-        {view === "day" && <MyDay {...{ callQueue, emailQueue, emailBacklog, replies, activity: data.activity || [], go: setView, onOpen: setDrawer, onLog: setLogging, refresh }} />}
+        {view === "day" && <MyDay {...{ callQueue, emailQueue, emailSplit, emailBacklog, replies, activity: data.activity || [], go: setView, onOpen: setDrawer, onLog: setLogging, refresh }} />}
         {view === "calls" && <CallsView {...{ queue: callQueue, me: data.me, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "leads" && <LeadsView {...{ leads, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "ab" && <ABView variants={data.variants || []} />}
@@ -285,8 +294,28 @@ function ActivityFeed({ items }: { items: Activity[] }) {
 
 /* ----------------------------------------------------------------- My Day */
 
-function MyDay({ callQueue, emailQueue, emailBacklog, replies, activity, go, onOpen, onLog, refresh }: any) {
-  const [tab, setTab] = useState<"calls" | "emails">("calls");
+/** Section header inside a queue, so the two kinds of email never blur together. */
+function QueueHead({ label, n, onAll }: { label: string; n: number; onAll: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 2px 2px",
+                  fontSize: 11.5, fontWeight: 600, letterSpacing: ".04em",
+                  textTransform: "uppercase", color: "var(--tx-3)" }}>
+      <span>{label}</span>
+      <span className="n">{n}</span>
+      {n > 5 && (
+        <button onClick={onAll} style={{ marginLeft: "auto", font: "inherit", textTransform: "none",
+                                         letterSpacing: 0, color: "var(--tx-3)" }}>
+          See all {n} →
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MyDay({ callQueue, emailQueue, emailSplit, emailBacklog, replies, activity, go, onOpen, onLog, refresh }: any) {
+  // Emails first: on a normal day there are always more emails than calls, and
+  // burying them behind the Calls tab is what hid them. (Byron 2026-08-10)
+  const [tab, setTab] = useState<"calls" | "emails">("emails");
   const today = new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
   return (
     <>
@@ -305,7 +334,7 @@ function MyDay({ callQueue, emailQueue, emailBacklog, replies, activity, go, onO
         </div>
         <div className="tile" onClick={() => setTab("emails")}>
           <div className="n">{emailQueue.length}</div><div className="l">Emails due</div>
-          <div className="h">{emailBacklog > emailQueue.length ? `${emailBacklog} due overall · today\u2019s cap` : "First touches and follow-ups"}</div>
+          <div className="h">{emailSplit.fresh.length} new · {emailSplit.follows.length} follow-ups{emailBacklog > emailQueue.length ? ` · ${emailBacklog} due overall` : ""}</div>
         </div>
         <div className="tile" onClick={() => go("leads")}>
           <div className="n">{replies.length}</div><div className="l">Replies to handle</div>
@@ -323,7 +352,18 @@ function MyDay({ callQueue, emailQueue, emailBacklog, replies, activity, go, onO
           <div className="stack">
             {tab === "calls" && callQueue.slice(0, 5).map((l: Lead, i: number) => <CallCard key={l.id} l={l} rank={i + 1} onLog={onLog} onOpen={onOpen} />)}
             {tab === "calls" && !callQueue.length && <div className="panel" style={{ color: "var(--tx-3)", fontSize: 13 }}>Call queue is clear.</div>}
-            {tab === "emails" && emailQueue.slice(0, 6).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} />)}
+            {tab === "emails" && !!emailSplit.fresh.length && (
+              <>
+                <QueueHead label="New companies — first email" n={emailSplit.fresh.length} onAll={() => go("leads")} />
+                {emailSplit.fresh.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} />)}
+              </>
+            )}
+            {tab === "emails" && !!emailSplit.follows.length && (
+              <>
+                <QueueHead label="Follow-ups" n={emailSplit.follows.length} onAll={() => go("leads")} />
+                {emailSplit.follows.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} />)}
+              </>
+            )}
             {tab === "emails" && !emailQueue.length && <div className="panel" style={{ color: "var(--tx-3)", fontSize: 13 }}>No emails due today.</div>}
           </div>
         </div>
