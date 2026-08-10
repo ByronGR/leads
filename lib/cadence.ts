@@ -80,6 +80,19 @@ export function statusLabel(status: string): string {
   return s === "No" ? "Not interested" : s;
 }
 
+function startOfToday(): Date {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return t;
+}
+
+/** Weekends aren't send days — roll forward to Monday. */
+function bumpToBizDay(from: Date): Date {
+  const d = new Date(from);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
 function addBizDays(from: Date, n: number): Date {
   const d = new Date(from);
   let left = n;
@@ -148,6 +161,15 @@ export function schedule(l: Lead): Step[] {
     { kind: "call",  label: "Third call",          n: 3, done: calls >= 3, gap: GAP_AFTER_CALL[1] },
   ];
 
+  // Byron 2026-08-10: "the dates are wrong, it looks like it's using Aug 9 as
+  // today." A lead emailed Aug 4 had follow-up 1 dated Aug 7 — a date that had
+  // already gone by — and every later step chained off that stale Aug 7. So a
+  // PENDING step is never allowed to sit in the past: the soonest it can really
+  // happen is today, and the rest of the chain runs from today. This is the same
+  // rule as "send late and the plan slides", applied to steps that ran late
+  // because nobody got to them.
+  const today = startOfToday();
+
   return plan.map((p) => {
     if (p.done) {
       // Already happened — anchor it at the last known activity rather than
@@ -155,6 +177,7 @@ export function schedule(l: Lead): Step[] {
       return { kind: p.kind, label: p.label, due: cursor, done: true, n: p.n };
     }
     cursor = addBizDays(cursor, p.gap);          // chain forward from real activity
+    if (cursor < today) cursor = bumpToBizDay(today);   // overdue -> due today
     return { kind: p.kind, label: p.label, due: new Date(cursor), done: false, n: p.n };
   });
 }

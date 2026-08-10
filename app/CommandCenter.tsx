@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   Lead, actionFor, nextStep, norm, zoneChip, theirTime, windowHere, callWindow,
-  MAX_CALL_ATTEMPTS, FU_DAILY, DAILY_SEND_CAP,
+  localDate, MAX_CALL_ATTEMPTS, FU_DAILY, DAILY_SEND_CAP,
 } from "@/lib/cadence";
 import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
@@ -22,10 +22,13 @@ const OBJECTIONS = ["Happy with current", "No budget", "Not hiring now", "Wants 
                     "Send info by email", "Timing — later this quarter", "Other"];
 const ICON: Record<string, string> = { call: "☎", email: "✉", status: "💬", callback: "＋" };
 
+// Must go through localDate(): Postgres hands back "2026-08-10T00:00:00.000Z",
+// and `new Date()` on that is 19:00 Aug 9 in Bogotá — so a callback booked for
+// Aug 10 rendered as "Aug 9". lib/cadence was fixed for this; this formatter
+// was not. (Byron 2026-08-10: "it looks like it's using Aug 9 as today Aug 10.")
 const fmtDay = (d: Date | string | null) => {
-  if (!d) return "—";
-  const x = typeof d === "string" ? new Date(d) : d;
-  return x.toLocaleDateString([], { month: "short", day: "numeric" });
+  const x = localDate(d);
+  return x ? x.toLocaleDateString([], { month: "short", day: "numeric" }) : "—";
 };
 
 /** The old page wrote raw JSON into activity_log.note; render it as a sentence. */
