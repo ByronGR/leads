@@ -128,11 +128,27 @@ function addBizDays(from: Date, n: number): Date {
  */
 export function localDate(iso: string | Date | null): Date | null {
   if (!iso) return null;
-  if (iso instanceof Date) return iso;
+  // A Date INSTANCE reaches us from the server component: Next.js preserves real
+  // Date objects through the RSC payload, whereas /api/cc has been through
+  // JSON.stringify and arrives as a string. Both describe the same Postgres
+  // `date`, stored as UTC midnight — but `new Date("2026-08-07T00:00:00Z")` is
+  // Aug 6 19:00 in Bogotá, so passing the instance through untouched made every
+  // lead read a day older than it is.
+  //
+  // That is why one click emptied the whole page (Byron 2026-08-11): the initial
+  // server render said 63 follow-ups were due, the refresh said 0. Same data,
+  // same function, different TYPE. Read the UTC calendar date in both cases.
+  if (iso instanceof Date) {
+    return isNaN(iso.getTime())
+      ? null
+      : new Date(iso.getUTCFullYear(), iso.getUTCMonth(), iso.getUTCDate());
+  }
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? null : d;
+  return isNaN(d.getTime())
+    ? null
+    : new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 export function bizDaysSince(iso: string | null): number {
