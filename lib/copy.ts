@@ -12,6 +12,11 @@ import { Lead, nextStep } from "./cadence";
  *
  * The wording mirrors outreach_spec.py exactly (Variant C + the warm bump).
  * If those templates change in Python, change them here too.
+ *
+ * NO SCARE-QUOTED CTA (Byron 2026-08-11). This used to end: reply "yes". His reasoning:
+ * the quote marks make it read as a template — "people can assume that it's a generated
+ * email and that no thought was given". Offer to share profiles instead. Do not
+ * reintroduce a quoted keyword CTA here or in outreach_spec.py.
  */
 
 /** Pull the quoted rate out of the stored first-touch copy so follow-ups reuse
@@ -69,7 +74,7 @@ export function messageFor(l: Lead): Message {
   // Touch 2 — follow-up 1.
   if (sent === 1) {
     const body = rate
-      ? `Hi ${who},\n\nFloating this up — I've got two ${role} profiles ready to go (Latin America, your hours, from ${rate}/mo). Want them? Just reply "yes" and they're in your inbox today.`
+      ? `Hi ${who},\n\nFloating this up — I've got two ${role} profiles ready to go (Latin America, your hours, from ${rate}/mo). I'd be happy to share them if you're interested.`
       : `Hi ${who},\n\nFloating this back up in case it got buried. If the ${role} search is still open, I'm happy to send over two example profiles from Latin America — no call required, just reply and I'll send them.\n\nAnd if it's not relevant, tell me and I'll close it out — no worries either way.`;
     return { label: "Follow-up 1", subject, body };
   }
