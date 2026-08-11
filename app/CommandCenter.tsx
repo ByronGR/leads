@@ -301,6 +301,32 @@ function ActivityFeed({ items }: { items: Activity[] }) {
   );
 }
 
+/**
+ * "Did the 3 AM routine actually run?" — Byron 2026-08-10, item 1.
+ * Silent until something is wrong or stale, so it is never noise on a good day.
+ */
+function RunHealth() {
+  const [r, setR] = useState<any>(null);
+  useEffect(() => { fetch("/api/run-status").then((x) => x.json()).then(setR).catch(() => {}); }, []);
+  if (!r?.finished) return null;
+  const hrs = (Date.now() - new Date(r.finished).getTime()) / 36e5;
+  const stale = hrs > 30;                       // weekday run is nightly; 30h means one was missed
+  const failed = (r.failed_stages || 0) > 0;
+  if (!stale && !failed) {
+    return <span className="meta" title={`Run ${r.run_id}, all stages OK`}>
+      ✓ routine ran {new Date(r.finished).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+    </span>;
+  }
+  const names = (r.stages || []).filter((s: any) => !s.ok).map((s: any) => s.stage).join(", ");
+  return (
+    <span title={failed ? `Failed: ${names}` : "No routine run in over a day"}
+          style={{ fontSize: 12, fontWeight: 600, color: "#8a2f2f", background: "#fdecec",
+                   border: "1px solid #f0c2c2", borderRadius: 6, padding: "4px 8px" }}>
+      {failed ? `⚠ routine: ${names} failed` : "⚠ routine hasn't run in over a day"}
+    </span>
+  );
+}
+
 /* ----------------------------------------------------------------- My Day */
 
 /** Section header inside a queue, so the two kinds of email never blur together. */
@@ -335,7 +361,10 @@ function MyDay({ callQueue, emailQueue, emailSplit, emailBacklog, replies, activ
           <div className="page-t">My Day</div>
           <div className="page-s">{today} · everything that needs a person today.</div>
         </div>
-        <button className="btn" onClick={refresh}>↻ Refresh from HubSpot</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <RunHealth />
+          <button className="btn" onClick={refresh}>↻ Refresh from HubSpot</button>
+        </div>
       </div>
 
       <div className="day-grid">
