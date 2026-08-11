@@ -60,11 +60,42 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
 
   const leads = data.leads || [];
 
-  async function refresh() {
+  async function refresh(): Promise<Payload | null> {
     const r = await fetch("/api/cc", { cache: "no-store" });
-    if (r.ok) setData(await r.json());
+    if (!r.ok) return null;
+    const j = (await r.json()) as Payload;
+    setData(j);
+    return j;
   }
-  async function act(lead: Lead, body: any, msg: string) {
+
+  /**
+   * The next lead still needing a person, in the same order My Day shows them:
+   * new companies first, then follow-ups oldest-first. Used to advance the drawer
+   * after an action so a queue can be worked straight through.
+   */
+  function nextNeedingAction(all: Lead[], doneId: number): Lead | null {
+    const due = all.filter((l) => l.id !== doneId && actionFor(l));
+    const fresh = due.filter((l) => actionFor(l)?.kind === "send");
+    const rest = due
+      .filter((l) => actionFor(l)?.kind !== "send")
+      .sort((a, b) => String(a.last_activity || "").localeCompare(String(b.last_activity || "")));
+    return [...fresh, ...rest][0] || null;
+  }
+
+  /**
+   * Byron 2026-08-11: "Now that I click on marked message, it removes everything in
+   * the view, I need to refresh so i can see the other leads."
+   *
+   * act() used to fire and leave the drawer open on a STALE snapshot of the lead just
+   * finished — it covered the list, showed pre-action values, and the only way out was
+   * a page reload. Nothing was ever lost; it was just hidden behind a dead panel.
+   *
+   * Now: `advance` moves the drawer straight to the next lead needing action (and
+   * closes it when the queue is empty), so marking messages is a continuous run.
+   * Every other action re-binds the drawer to the REFRESHED lead so it can never show
+   * stale data.
+   */
+  async function act(lead: Lead, body: any, msg: string, advance = false) {
     setBusy(true);
     try {
       const r = await fetch("/api/cc/log", {
@@ -72,7 +103,19 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
         body: JSON.stringify({ lead_id: lead.id, ...body }),
       });
       if (!r.ok) throw new Error((await r.json()).error || "failed");
-      await refresh(); setToast(msg);
+      const fresh = await refresh();
+      if (fresh) {
+        if (advance) {
+          const nxt = nextNeedingAction(fresh.leads || [], lead.id);
+          setDrawer(nxt);
+          setToast(nxt ? `${msg} — next: ${nxt.company}` : `${msg} — queue clear`);
+        } else {
+          setDrawer((d) => (d ? (fresh.leads || []).find((x) => x.id === d.id) || null : d));
+          setToast(msg);
+        }
+      } else {
+        setToast(msg);
+      }
     } catch (e: any) { setToast(`Couldn't save — ${e.message}`); }
     finally { setBusy(false); }
   }
@@ -165,8 +208,10 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
         <LeadDrawer
           l={drawer} onClose={() => setDrawer(null)}
           onLog={(l: Lead) => { setDrawer(null); setLogging(l); }}
-          onSent={(l: Lead) => act(l, { action: "sent" }, "Marked as sent")}
-          onStatus={(l: Lead, s: string) => act(l, { action: "status", status: s }, s === "No" ? "Marked not interested" : `Marked ${s}`)}
+          onSent={(l: Lead) => act(l, { action: "sent" }, "Marked as sent", true)}
+          onStatus={(l: Lead, s: string) =>
+            act(l, { action: "status", status: s },
+                s === "No" ? "Marked not interested" : `Marked ${s}`, true)}
           busy={busy}
         />
       )}
