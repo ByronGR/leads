@@ -3,11 +3,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   Lead, actionFor, nextStep, norm, zoneChip, theirTime, windowHere, callWindow,
-  localDate, MAX_CALL_ATTEMPTS, FU_DAILY, DAILY_SEND_CAP,
+  localDate, MAX_CALL_ATTEMPTS, followUpBudget,
 } from "@/lib/cadence";
 import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
-  PhoneIcon, MailIcon, CloseIcon,
+  PhoneIcon, MailIcon, CloseIcon, ActionButton,
 } from "./ui";
 import { messageFor } from "@/lib/copy";
 
@@ -78,32 +78,34 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
   }
 
   const callQueue = useMemo(() => leads.filter((l) => actionFor(l)?.kind === "call"), [leads]);
-  // "Emails due" is A DAY'S WORK, not everything technically overdue. The engine
-  // sends at most FU_DAILY follow-ups plus new touches up to DAILY_SEND_CAP, so
-  // the tile mirrors that — otherwise it read 98 when Byron sends 55. Oldest
-  // follow-ups first, exactly as daily_send_plan.py orders them.
-  //
-  // Byron 2026-08-10: "why don't I see the emails I need to send???" — the queue
-  // was ONE flat list with all 30 follow-ups in front, and My Day previewed the
-  // first 6. So the 47 first-touch emails sat at positions 31-55 and were never
-  // on screen. Keep the two kinds SEPARATE and render both.
+  // TODAY'S EMAIL WORK, in two independent queues (Byron 2026-08-10).
+  //   NEW      — uncapped. A backlog he draws down; the remainder rolls to tomorrow.
+  //   FOLLOW-UP— budgeted by followUpBudget() so a burst drains over a few days
+  //              rather than landing as "200 follow-ups" on one morning.
+  // They are kept SEPARATE because they used to be one flat list with follow-ups in
+  // front, and My Day previewed only the first 6 — so first-touch emails were never
+  // once on screen ("why don't I see the emails I need to send???").
   const emailSplit = useMemo(() => {
     const due = leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; });
-    const follows = due
+    // NEW LEADS: never truncated. Byron works the backlog down at his own pace and
+    // whatever he doesn't get to rolls into tomorrow alongside the new ones.
+    const fresh = due.filter((l) => actionFor(l)?.kind === "send");
+    // FOLLOW-UPS: oldest first (they go cold fastest), trimmed to today's budget so a
+    // 200-deep pile drains over a few days instead of landing on one morning.
+    const allFollows = due
       .filter((l) => actionFor(l)?.kind === "follow")
-      .sort((a, b) => String(a.last_activity || "").localeCompare(String(b.last_activity || "")))
-      .slice(0, FU_DAILY);
-    // New leads fill whatever the daily cap has left after follow-ups.
-    const fresh = due
-      .filter((l) => actionFor(l)?.kind === "send")
-      .slice(0, Math.max(0, DAILY_SEND_CAP - follows.length));
-    return { fresh, follows, all: [...fresh, ...follows] };
+      .sort((a, b) => String(a.last_activity || "").localeCompare(String(b.last_activity || "")));
+    const budget = followUpBudget(allFollows.length);
+    const follows = allFollows.slice(0, budget);
+    return {
+      fresh,
+      follows,
+      deferred: allFollows.length - follows.length,  // shown, not hidden
+      all: [...fresh, ...follows],
+    };
   }, [leads]);
   const emailQueue = emailSplit.all;
-  const emailBacklog = useMemo(
-    () => leads.filter((l) => { const a = actionFor(l); return a?.kind === "send" || a?.kind === "follow"; }).length,
-    [leads]
-  );
+  const emailBacklog = emailSplit.fresh.length + emailSplit.follows.length + emailSplit.deferred;
   const replies = useMemo(() => leads.filter((l) => norm(l.status) === "Replied"), [leads]);
   const needs = useMemo(() => leads.filter((l) => actionFor(l)), [leads]);
 
@@ -227,7 +229,7 @@ function CallCard({ l, rank, onLog, onOpen }: any) {
   );
 }
 
-function MailCard({ l, onOpen }: any) {
+function MailCard({ l, onOpen, onLog }: any) {
   const [c, setC] = useState(false);
   const msg = messageFor(l);
   return (
@@ -239,6 +241,7 @@ function MailCard({ l, onOpen }: any) {
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <TouchDots l={l} />
+        <ActionButton l={l} onOpen={onOpen} onLog={onLog} compact />
         <button className="btn sm" onClick={(e) => {
           e.stopPropagation();
           navigator.clipboard?.writeText(`${msg.subject}\n\n${msg.body}`)
@@ -270,8 +273,11 @@ function LeadRow({ l, onOpen, onLog }: any) {
       <div className="lr-dots"><TouchDots l={l} /></div>
       <div className={"lr-next" + (a ? " due" : "")}><span className="k">Next</span>{s ? `${s.label} · ${fmtDay(s.due)}` : "done"}</div>
       <div className="actions-cell" onClick={(e) => e.stopPropagation()}>
-        <button className="iconbtn" onClick={() => onLog(l)} disabled={l.dnc || !l.phone} title="Log a call">{PhoneIcon}</button>
-        <button className={"btn sm" + (a ? " primary" : "")} onClick={() => onOpen(l)}>{MailIcon}{a ? "Email" : "View"}</button>
+        {/* The one button that says WHICH kind of step is due — email or call — and
+            does it. The old pair of buttons showed both regardless, so a row due for
+            a call still read "Email". (Byron 2026-08-10, item 8) */}
+        {a ? <ActionButton l={l} onOpen={onOpen} onLog={onLog} compact />
+           : <button className="btn sm" onClick={() => onOpen(l)}>{MailIcon}View</button>}
       </div>
     </div>
   );
@@ -298,13 +304,15 @@ function ActivityFeed({ items }: { items: Activity[] }) {
 /* ----------------------------------------------------------------- My Day */
 
 /** Section header inside a queue, so the two kinds of email never blur together. */
-function QueueHead({ label, n, onAll }: { label: string; n: number; onAll: () => void }) {
+function QueueHead({ label, n, onAll, note }:
+  { label: string; n: number; onAll: () => void; note?: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 2px 2px",
                   fontSize: 11.5, fontWeight: 600, letterSpacing: ".04em",
                   textTransform: "uppercase", color: "var(--tx-3)" }}>
       <span>{label}</span>
       <span className="n">{n}</span>
+      {note && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>· {note}</span>}
       {n > 5 && (
         <button onClick={onAll} style={{ marginLeft: "auto", font: "inherit", textTransform: "none",
                                          letterSpacing: 0, color: "var(--tx-3)" }}>
@@ -337,7 +345,8 @@ function MyDay({ callQueue, emailQueue, emailSplit, emailBacklog, replies, activ
         </div>
         <div className="tile" onClick={() => setTab("emails")}>
           <div className="n">{emailQueue.length}</div><div className="l">Emails due</div>
-          <div className="h">{emailSplit.fresh.length} new · {emailSplit.follows.length} follow-ups{emailBacklog > emailQueue.length ? ` · ${emailBacklog} due overall` : ""}</div>
+          <div className="h">{emailSplit.fresh.length} new · {emailSplit.follows.length} follow-ups
+            {emailSplit.deferred > 0 ? ` · ${emailSplit.deferred} held for later` : ""}</div>
         </div>
         <div className="tile" onClick={() => go("leads")}>
           <div className="n">{replies.length}</div><div className="l">Replies to handle</div>
@@ -358,13 +367,16 @@ function MyDay({ callQueue, emailQueue, emailSplit, emailBacklog, replies, activ
             {tab === "emails" && !!emailSplit.fresh.length && (
               <>
                 <QueueHead label="New companies — first email" n={emailSplit.fresh.length} onAll={() => go("leads")} />
-                {emailSplit.fresh.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} />)}
+                {emailSplit.fresh.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} onLog={onLog} />)}
               </>
             )}
             {tab === "emails" && !!emailSplit.follows.length && (
               <>
-                <QueueHead label="Follow-ups" n={emailSplit.follows.length} onAll={() => go("leads")} />
-                {emailSplit.follows.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} />)}
+                <QueueHead label="Follow-ups" n={emailSplit.follows.length} onAll={() => go("leads")}
+                           note={emailSplit.deferred > 0
+                             ? `${emailSplit.deferred} more spread over the next few days`
+                             : undefined} />
+                {emailSplit.follows.slice(0, 5).map((l: Lead) => <MailCard key={l.id} l={l} onOpen={onOpen} onLog={onLog} />)}
               </>
             )}
             {tab === "emails" && !emailQueue.length && <div className="panel" style={{ color: "var(--tx-3)", fontSize: 13 }}>No emails due today.</div>}

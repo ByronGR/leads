@@ -146,6 +146,42 @@ export function SchedulePanel({ l }: { l: Lead }) {
   );
 }
 
+/**
+ * WHAT THIS LEAD NEEDS, AS A BUTTON — Byron 2026-08-10: "we need a way to know, by
+ * adding a button if the follow up is an email or phone call."
+ *
+ * Email and call steps are interleaved in the cadence (first -> FU1 -> call -> FU2 ->
+ * call -> call), so "follow-up due" alone never told him which one to do. This says
+ * it in words, colours the two differently, and does the right thing when clicked:
+ * an email opens the drafted message, a call opens the call logger.
+ */
+export function ActionButton({ l, onOpen, onLog, compact = false }:
+  { l: Lead; onOpen?: (l: Lead) => void; onLog?: (l: Lead) => void; compact?: boolean }) {
+  const a = actionFor(l);
+  if (!a) return <span className="meta">waiting</span>;
+  const isCall = a.kind === "call";
+  const label = compact
+    ? (isCall ? "Call" : "Email")
+    : (isCall ? `${a.label} — call` : `${a.label} — email`);
+  return (
+    <button
+      className="btn sm"
+      title={isCall ? "This step is a phone call" : "This step is an email"}
+      onClick={(e) => { e.stopPropagation(); (isCall ? onLog : onOpen)?.(l); }}
+      style={{
+        gap: 6, fontWeight: 600, whiteSpace: "nowrap",
+        // Amber = pick up the phone, green = write an email. Deliberately NOT the same
+        // colour, so a queue of mixed steps is scannable without reading every row.
+        color: isCall ? "#8a5a12" : "#0d6b57",
+        borderColor: isCall ? "#e6c68a" : "#9fd6c6",
+        background: isCall ? "#fdf6e7" : "#eefaf5",
+      }}
+    >
+      {isCall ? PhoneIcon : MailIcon}{label}
+    </button>
+  );
+}
+
 export function ActionBadge({ l }: { l: Lead }) {
   const a = actionFor(l);
   if (!a) return <span className="meta">waiting</span>;

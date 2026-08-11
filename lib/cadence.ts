@@ -23,11 +23,28 @@ export const MAX_CALL_ATTEMPTS = 3; // call_list.MAX_ATTEMPTS
 export const EMAIL_TOUCHES = 3;     // first + FU1 + FU2 (Variant C)
 export const APOLLO_CADENCE = [0, 3, 7, 12];
 
-// What one person actually sends in a day, mirroring daily_send_plan.py.
-// Without this the "Emails due" tile counted every technically-due lead (98) —
-// true, but not a day's work, and not what Byron would send. (Byron 2026-08-09)
-export const DAILY_SEND_CAP = 55;   // daily_send_plan.DAILY_SEND_CAP
-export const FU_DAILY = 30;         // daily_send_plan.FU_DAILY
+// NEW LEADS ARE NEVER CAPPED. Byron 2026-08-10: "New leads, send what you have for
+// that day. If you send me 200, and I only send 40, the 160 will continue in the list
+// + the new leads on the next day." So the new-lead queue is a BACKLOG he works down,
+// not a daily allowance — showing him fewer than exist just hides pipeline.
+//
+// FOLLOW-UPS ARE CAPPED, because they are time-sensitive and pile up in bursts:
+// "we can send 50 follow ups or 80, but not 200 follow ups."
+export const FU_DAILY_MIN = 30;     // a normal day
+export const FU_DAILY_MAX = 80;     // Byron's stated ceiling — never exceed
+export const FU_CATCHUP_DAYS = 3;   // clear a backlog over this many days, not in one hit
+
+/**
+ * How many follow-ups to surface today. Scales with the size of the backlog so a
+ * quiet day stays quiet and a 200-deep pile drains over FU_CATCHUP_DAYS instead of
+ * landing on one morning — but never above the ceiling Byron gave.
+ */
+export function followUpBudget(backlog: number): number {
+  if (backlog <= FU_DAILY_MIN) return backlog;
+  return Math.min(FU_DAILY_MAX, Math.max(FU_DAILY_MIN, Math.ceil(backlog / FU_CATCHUP_DAYS)));
+}
+
+export const MAX_CALLS_PER_DAY = 40; // call_list.DAILY_CALL_CAP
 
 export const MY_TZ = -5;            // Bogotá (COT)
 
