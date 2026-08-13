@@ -91,7 +91,7 @@ export function messageFor(l: Lead): Message {
   // Touch 3 — the final nudge.
   if (sent === 2) {
     const body = rate
-      ? `Hi ${who},\n\nLast nudge on this. If the ${role} search is still open, I'll send two profiles from ${rate}/mo — no call, free replacement in the first 3 months. Worth a look? If it's not relevant, just say so and I'll close it out — no worries either way.`
+      ? `Hi ${who},\n\nLast nudge on this. If the ${role} search is still open, I'll send two profiles from ${rate}/mo — no call, and we replace anyone who isn't right in the first 3 months. Worth a look? If it's not relevant, just say so and I'll close it out — no worries either way.`
       : `Hi ${who},\n\nLast nudge on this. If the ${role} search is still open, I'll send over two example profiles from Latin America — no call required. Worth a look? If it's not relevant, just say so and I'll close it out — no worries either way.`;
     return { label: "Follow-up 2 (final)", subject, body };
   }
