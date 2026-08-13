@@ -69,7 +69,16 @@ export function messageFor(l: Lead): Message {
     return { label: "First email", subject: l.gen_subject || "", body: l.gen_body };
   }
 
-  const subject = `Re: ${l.gen_subject || role}`;
+  // Follow-ups normally reuse the original subject so the thread stays together. But
+  // subjects written before 2026-08-12 carry a price comparison ("$3,600/mo here vs
+  // $11,100 in the US"), and a "$" in a subject line is a top-tier spam signal — it is
+  // the shape of every discount blast. Threading is worth nothing if the original went
+  // to spam and was never seen, so a priced legacy subject is replaced rather than
+  // echoed. (Byron 2026-08-12: a test send landed in spam.)
+  const legacyPriced = /\$/.test(l.gen_subject || "");
+  const subject = legacyPriced
+    ? `Following up — ${role}`
+    : `Re: ${l.gen_subject || role}`;
 
   // Touch 2 — follow-up 1.
   if (sent === 1) {
