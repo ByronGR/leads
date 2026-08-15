@@ -14,6 +14,21 @@ import { q } from "./db";
  * string here.
  */
 export async function commandCenterData(me: string) {
+  // SELF-HEALING SCHEMA. Twice on 2026-08-13 a deploy that SELECTed a new column went
+  // live before its migration ran, and the whole page 500'd - "Application error: a
+  // server-side exception has occurred". Checking health right after a push is not
+  // enough either: Vercel serves the OLD build until the new one finishes, so the
+  // check passes against code that doesn't have the problem yet.
+  //
+  // Adding the column here costs one cheap no-op statement per request and removes
+  // the ordering hazard entirely: the page can no longer be broken by deploying
+  // ahead of a migration.
+  await q(`alter table leads add column if not exists linkedin text`).catch(() => {});
+  await q(`alter table leads add column if not exists linkedin_stage text`).catch(() => {});
+  await q(`alter table leads add column if not exists linkedin_at date`).catch(() => {});
+  await q(`alter table leads add column if not exists linkedin_by text`).catch(() => {});
+  await q(`alter table leads add column if not exists phone text`).catch(() => {});
+
   const leads = await q(
     `select l.id, l.company, l.owner, l.role, l.contact_name, l.contact_title,
             l.phone, l.linkedin, l.linkedin_stage, l.linkedin_at, l.linkedin_by, l.email, l.email_confidence, l.status, coalesce(l.sent_count,0) as sent_count,
