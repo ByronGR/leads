@@ -116,13 +116,26 @@ export function messageFor(l: Lead): Message {
  *
  * Mirrors outreach_spec.linkedin_note / linkedin_message. Change both together.
  */
-export function linkedinNote(l: Lead, openedEmail: boolean): string {
+export function linkedinNote(l: Lead, _openedEmail?: boolean): string {
   const who = firstName(l);
   const r = roleOf(l);
-  const note = openedEmail
-    ? `Hi ${who} — I emailed you about the ${r} opening at ${l.company} a little while back; I think it landed in spam. Not chasing anything, just thought I'd connect properly.`
-    : `Hi ${who} — saw ${l.company} is hiring for ${r}. I work with US teams hiring in Latin America, so this is squarely my world. Thought I'd connect.`;
-  return note.slice(0, 300);
+  const intro = `Hi ${who} — I'm Byron from Nearwork. `;
+  const what = "We place vetted professionals from Latin America into US teams, on your hours. ";
+  const saw = `Saw ${l.company} is hiring for ${r} — I can send a couple of profiles that fit, no commitment. `;
+  const close = "If it's not for you, no worries at all — I'd still love to connect. Best of luck!";
+  // Byron's own wording (2026-08-13). He did NOT want the note to mention the email
+  // that went to spam — "more of a connection and valuable asset."
+  //
+  // Over 300 chars LinkedIn truncates, and real company/role names push it over. Drop
+  // whole clauses in priority order, never mid-sentence. The WARM OUT outlives the
+  // description of Nearwork: it is what makes this read as a person rather than a
+  // pitch, and they can read what we do on the profile anyway.
+  for (const parts of [[intro, what, saw, close], [intro, saw, close],
+                       [intro, what, saw], [intro, saw]]) {
+    const note = parts.join("").trim();
+    if (note.length <= 300) return note;
+  }
+  return (intro + saw).trim().slice(0, 300);
 }
 
 export function linkedinMessage(l: Lead): string {
