@@ -56,6 +56,7 @@ export async function POST(req: Request) {
     await q(
       `update leads
           set linkedin_stage = $2,
+              linkedin_by    = $3,
               linkedin_at    = current_date,
               last_activity  = current_date,
               started        = coalesce(started, current_date),
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
                                     else coalesce(sent_count,0) end,
               updated_at     = now()
         where id = $1`,
-      [id, stage]
+      [id, stage, actor]
     );
     await q(
       `insert into activity_log (lead_id, actor, action, note) values ($1,$2,'linkedin',$3)`,

@@ -22,6 +22,7 @@ export async function GET(req: Request) {
   await q(`alter table leads add column if not exists linkedin text`);
   await q(`alter table leads add column if not exists linkedin_stage text`);
   await q(`alter table leads add column if not exists linkedin_at date`);
+  await q(`alter table leads add column if not exists linkedin_by text`);
   await q(`alter table leads add column if not exists contact_title text`);
   await q(`alter table leads add column if not exists website text`);
   // Lead's UTC offset, so we can render their local clock and the call window in

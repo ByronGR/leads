@@ -158,7 +158,8 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
       .filter((l) => {
         const st = norm(l.status);
         if (st === "No" || st === "Replied") return false;
-        if (l.linkedin_stage === "message") return false;   // already fully worked
+        // NOTE: touched leads stay IN the queue so search can still find them. It is
+        // the default FILTER below that hides them from the to-do list, not this.
         return !!(l.contact_name || "").trim();             // need a person to find
       })
       .sort((a, b) => {
@@ -530,21 +531,30 @@ function LinkedInView({ queue, onOpen, act }: any) {
   const doneToday = queue.filter((l: Lead) =>
     String(l.linkedin_at || "").slice(0, 10) === todayISO).length;
 
+  // Byron 2026-08-13: "I don't want 2 SDRs sending the same message to the same
+  // person, that's spamming." So the DEFAULT list is untouched leads only — the moment
+  // anyone logs a connect or a message, it leaves everyone's to-do list. It is not
+  // deleted: "it doesn't mean that we cannot search for that person."
   const sets: Record<string, (l: Lead) => boolean> = {
-    all: () => true,
-    read: (l) => !!l.opened,
-    waiting: (l) => l.linkedin_stage === "connect",
-    ready: (l) => !l.linkedin_stage,
+    all: (l) => !l.linkedin_stage,                    // the to-do list
+    read: (l) => !l.linkedin_stage && !!l.opened,
+    waiting: (l) => l.linkedin_stage === "connect",   // request sent, waiting on them
+    done: (l) => l.linkedin_stage === "message",      // fully worked
   };
-  const rows = queue
-    .filter(sets[filter])
-    .filter((l: Lead) => !q || l.company.toLowerCase().includes(q.toLowerCase()));
+  // SEARCH OVERRIDES THE FILTER. If a rep types a company name they want to know
+  // whether it has been touched and by whom — hiding it behind the active filter is
+  // exactly the confusion that leads to a double-send.
+  const rows = q
+    ? queue.filter((l: Lead) =>
+        l.company.toLowerCase().includes(q.toLowerCase()) ||
+        (l.contact_name || "").toLowerCase().includes(q.toLowerCase()))
+    : queue.filter(sets[filter]);
 
   const CHIPS: [string, string, number][] = [
-    ["all", "All", queue.length],
+    ["all", "To contact", queue.filter(sets.all).length],
     ["read", "Read your email", queue.filter(sets.read).length],
-    ["ready", "Not contacted", queue.filter(sets.ready).length],
     ["waiting", "Awaiting accept", queue.filter(sets.waiting).length],
+    ["done", "Already messaged", queue.filter(sets.done).length],
   ];
 
   return (
@@ -589,7 +599,7 @@ function LinkedInView({ queue, onOpen, act }: any) {
           ))}
         </div>
         <div className="tb-right">
-          <input className="search" placeholder="Search company…" value={q}
+          <input className="search" placeholder="Search anyone — incl. already messaged…" value={q}
                  onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
@@ -620,7 +630,12 @@ function LinkedInView({ queue, onOpen, act }: any) {
                      onClick={() => setOpen(isOpen ? null : l.id)}>
                   <span style={{ fontWeight: 600, minWidth: 0 }}>{l.company}</span>
                   {l.opened && <span className="badge f1">read your email</span>}
-                  {l.linkedin_stage === "connect" && <span className="badge b-Sent">awaiting accept</span>}
+                  {l.linkedin_stage && (
+                    <span className="badge b-Sent">
+                      {l.linkedin_stage === "connect" ? "request sent" : "messaged"}
+                      {l.linkedin_by ? ` · ${l.linkedin_by.split(" ")[0]}` : ""}
+                    </span>
+                  )}
                   <span className="meta" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                     {(l.contact_name || "—").split("(")[0].trim()} · {l.role}
                   </span>
@@ -629,6 +644,16 @@ function LinkedInView({ queue, onOpen, act }: any) {
 
                 {isOpen && (
                   <div style={{ marginTop: 10 }}>
+                    {l.linkedin_stage && (
+                      <div style={{ marginBottom: 8, fontSize: 12.5, fontWeight: 600,
+                                    color: "#8a5a12", background: "#fdf6e7",
+                                    border: "1px solid #e6c68a", borderRadius: 6,
+                                    padding: "6px 10px" }}>
+                        ⚠ {l.linkedin_by || "Someone"} already{" "}
+                        {l.linkedin_stage === "connect" ? "sent a connection request" : "messaged"} this person
+                        {l.linkedin_at ? ` on ${fmtDay(l.linkedin_at)}` : ""} — don't send again.
+                      </div>
+                    )}
                     <div className="meta" style={{ marginBottom: 6 }}>{due.title}</div>
                     <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px",
                                   fontSize: 13, whiteSpace: "pre-wrap" }}>{due.text}</div>
@@ -640,10 +665,20 @@ function LinkedInView({ queue, onOpen, act }: any) {
                       <CopyBtn text={due.text} label="Copy" primary />
                       {mode === "inmail" && <CopyBtn text={im.subject} label="Copy subject" />}
                       <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                        <button className="btn sm" onClick={() =>
+                        {/* Marking it taken is the point of this screen: it removes the
+                            lead from EVERY rep's to-do list so two SDRs can't message
+                            the same person. It stays searchable. (Byron 2026-08-13) */}
+                        <button className="btn sm primary" onClick={() =>
                           act(l, { action: "linkedin", stage: action.stage }, action.label, true)}>
                           {action.label}
                         </button>
+                        {!l.linkedin_stage && (
+                          <button className="btn sm" title="Someone already reached out — take it off the list"
+                            onClick={() => act(l, { action: "linkedin", stage: "message" },
+                                               "Marked already messaged", true)}>
+                            Already messaged
+                          </button>
+                        )}
                         <button className="btn sm ghost" onClick={() => onOpen(l)}>Details</button>
                       </span>
                     </div>
