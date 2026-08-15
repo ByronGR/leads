@@ -3,18 +3,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   Lead, actionFor, nextStep, norm, zoneChip, theirTime, windowHere, callWindow,
-  localDate, MAX_CALL_ATTEMPTS, followUpBudget,
+  localDate, MAX_CALL_ATTEMPTS, followUpBudget, linkedinStep,
 } from "@/lib/cadence";
 import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
   PhoneIcon, MailIcon, CloseIcon, ActionButton,
 } from "./ui";
-import { messageFor } from "@/lib/copy";
+import { messageFor, linkedinNote, linkedinMessage, linkedinSearch } from "@/lib/copy";
 
 type Activity = { id: number; actor: string; action: string; note: string; ts: string; company: string };
 type Variant = { variant: string; leads: number; sent: number; opened: number; replied: number; reply_rate: number; open_rate: number };
 type Payload = { leads: Lead[]; activity: Activity[]; variants: Variant[]; me: string; generated: string };
-type View = "day" | "calls" | "leads" | "ab" | "activity";
+type View = "day" | "linkedin" | "calls" | "leads" | "ab" | "activity";
 
 const OUTCOMES = ["Connected", "Voicemail", "No answer", "Wrong number", "Gatekeeper"];
 const INTERESTS = ["Hot", "Warm", "Cold"];
@@ -149,6 +149,26 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
   }, [leads]);
   const emailQueue = emailSplit.all;
   const emailBacklog = emailSplit.fresh.length + emailSplit.follows.length + emailSplit.deferred;
+  // LINKEDIN QUEUE (Byron 2026-08-13: email paused, everyone goes to LinkedIn).
+  // Everyone still open — emailed or not — minus anyone already worked on LinkedIn.
+  // Genuine openers FIRST: they read the email their filter buried, so a connection
+  // request from a half-remembered name is the warmest approach available.
+  const liQueue = useMemo(() => {
+    return leads
+      .filter((l) => {
+        const st = norm(l.status);
+        if (st === "No" || st === "Replied") return false;
+        if (l.linkedin_stage === "message") return false;   // already fully worked
+        return !!(l.contact_name || "").trim();             // need a person to find
+      })
+      .sort((a, b) => {
+        const stage = (l: Lead) => (l.linkedin_stage === "connect" ? 0 : 1); // accepted-> message next
+        if (stage(a) !== stage(b)) return stage(a) - stage(b);
+        if (!!b.opened !== !!a.opened) return b.opened ? 1 : -1;
+        return a.company.localeCompare(b.company);
+      });
+  }, [leads]);
+
   const replies = useMemo(() => leads.filter((l) => norm(l.status) === "Replied"), [leads]);
   const needs = useMemo(() => leads.filter((l) => actionFor(l)), [leads]);
 
@@ -166,6 +186,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
         <nav className="nav">
           <div className="grp">TODAY</div>
           <button className={view === "day" ? "on" : ""} onClick={() => setView("day")}>My Day<span className="n">{needs.length}</span></button>
+          <button className={view === "linkedin" ? "on" : ""} onClick={() => setView("linkedin")}>LinkedIn<span className="n">{liQueue.length}</span></button>
           <button className={view === "calls" ? "on" : ""} onClick={() => setView("calls")}>Calls<span className="n">{callQueue.length}</span></button>
           <div className="grp">PIPELINE</div>
           <button className={view === "leads" ? "on" : ""} onClick={() => setView("leads")}>Leads<span className="n">{leads.length}</span></button>
@@ -198,6 +219,7 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
 
       <main className="main">
         {view === "day" && <MyDay {...{ callQueue, emailQueue, emailSplit, emailBacklog, replies, activity: data.activity || [], go: setView, onOpen: setDrawer, onLog: setLogging, refresh }} />}
+        {view === "linkedin" && <LinkedInView {...{ queue: liQueue, onOpen: setDrawer, act }} />}
         {view === "calls" && <CallsView {...{ queue: callQueue, me: data.me, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "leads" && <LeadsView {...{ leads, onOpen: setDrawer, onLog: setLogging }} />}
         {view === "ab" && <ABView variants={data.variants || []} />}
@@ -464,6 +486,113 @@ function MyDay({ callQueue, emailQueue, emailSplit, emailBacklog, replies, activ
           <ActivityFeed items={activity.slice(0, 5)} />
         </div>
       </div>
+    </>
+  );
+}
+
+
+/* --------------------------------------------------------------- LinkedIn */
+
+/** One copy-to-clipboard button that confirms itself. */
+function CopyBtn({ text, label, primary }: { text: string; label: string; primary?: boolean }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button className={"btn sm" + (primary ? " primary" : "")} disabled={!text}
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard?.writeText(text)
+          .then(() => { setDone(true); setTimeout(() => setDone(false), 1400); })
+          .catch(() => {});
+      }}>{done ? "Copied ✓" : label}</button>
+  );
+}
+
+/**
+ * THE LINKEDIN QUEUE. Byron 2026-08-13: email is paused entirely, so every open lead
+ * — emailed or not — is worked here instead.
+ *
+ * Each row carries BOTH texts ready to paste: the 300-character connection note, and
+ * the message to send once they accept. Which one is highlighted depends on where the
+ * lead actually is, so there is never a question of what to send next.
+ */
+function LinkedInView({ queue, onOpen, act }: any) {
+  const [q, setQ] = useState("");
+  const rows = queue.filter((l: Lead) => !q || l.company.toLowerCase().includes(q.toLowerCase()));
+  const openers = rows.filter((l: Lead) => l.opened).length;
+  return (
+    <>
+      <div className="page-h">
+        <div>
+          <div className="page-t">LinkedIn</div>
+          <div className="page-s">
+            Email is paused. {openers} of these read an email that landed in their spam —
+            those are first, and their note says so.
+          </div>
+        </div>
+      </div>
+      <div className="toolbar">
+        <div className="chips"><div className="chip on">{rows.length} to work</div></div>
+        <div className="tb-right">
+          <input className="search" placeholder="Search company…" value={q}
+                 onChange={(e) => setQ(e.target.value)} />
+        </div>
+      </div>
+      {rows.length ? (
+        <div className="stack">
+          {rows.slice(0, 60).map((l: Lead) => {
+            const step = linkedinStep(l);
+            const note = linkedinNote(l, !!l.opened);
+            const msg = linkedinMessage(l);
+            const onConnect = step.stage === "connect";
+            return (
+              <div className="panel" key={l.id} style={{ padding: "14px 16px", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700 }}>{l.company}</span>
+                  <span className="meta">{(l.contact_name || "—").split("(")[0].trim()}
+                    {l.contact_title ? ` · ${l.contact_title}` : ""}</span>
+                  {l.opened && <span className="badge f1">read your email</span>}
+                  <span className="meta" style={{ marginLeft: "auto" }}>{l.role}</span>
+                </div>
+
+                <div style={{ margin: "10px 0 12px", fontSize: 12.5, color: "var(--tx-2)" }}>
+                  <b>{step.label}</b>
+                  {step.due && step.stage !== "connect" ? ` · ${fmtDay(step.due)}` : ""} — {step.hint}
+                </div>
+
+                {/* The note earns the accept; the message carries the pitch. Both are
+                    always available, but the one that is DUE is the primary button. */}
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div className="meta" style={{ marginBottom: 4 }}>
+                      CONNECTION NOTE · {note.length}/300
+                    </div>
+                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{note}</div>
+                  </div>
+                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div className="meta" style={{ marginBottom: 4 }}>MESSAGE — after they accept</div>
+                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{msg}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <a className="btn sm" target="_blank" rel="noreferrer"
+                     href={l.linkedin || linkedinSearch(l)}>
+                    {l.linkedin ? "Open profile" : "Find on LinkedIn"}
+                  </a>
+                  <CopyBtn text={note} label="Copy note" primary={onConnect} />
+                  <CopyBtn text={msg} label="Copy message" primary={!onConnect} />
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                    {onConnect
+                      ? <button className="btn sm" onClick={() => act(l, { action: "linkedin", stage: "connect" }, "Connection request logged", true)}>Sent request</button>
+                      : <button className="btn sm" onClick={() => act(l, { action: "linkedin", stage: "message" }, "LinkedIn message logged", true)}>Sent message</button>}
+                    <button className="btn sm ghost" onClick={() => onOpen(l)}>Details</button>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : <div className="empty"><div className="big">Nothing queued</div>Every open lead has been worked on LinkedIn.</div>}
     </>
   );
 }

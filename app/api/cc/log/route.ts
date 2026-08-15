@@ -47,6 +47,29 @@ export async function POST(req: Request) {
     if (b.interest === "Hot") {
       await q(`update leads set status = 'Replied' where id = $1 and status not in ('Deal','Won')`, [id]);
     }
+  } else if (b.action === "linkedin") {
+    // Byron 2026-08-13: email is paused while nearwork.co recovers, so LinkedIn is
+    // the outreach channel. Without its own action the page would keep insisting on
+    // an email he has decided not to send, and the follow-up clock would never move.
+    // `stage` is "connect" (request sent) or "message" (sent after they accepted).
+    const stage = b.stage === "message" ? "message" : "connect";
+    await q(
+      `update leads
+          set linkedin_stage = $2,
+              linkedin_at    = current_date,
+              last_activity  = current_date,
+              started        = coalesce(started, current_date),
+              status         = case when status = 'New' then 'Sent' else status end,
+              sent_count     = case when $2 = 'message' then greatest(coalesce(sent_count,0), 1)
+                                    else coalesce(sent_count,0) end,
+              updated_at     = now()
+        where id = $1`,
+      [id, stage]
+    );
+    await q(
+      `insert into activity_log (lead_id, actor, action, note) values ($1,$2,'linkedin',$3)`,
+      [id, actor, stage === "connect" ? "connection request sent" : "LinkedIn message sent"]
+    );
   } else if (b.action === "callback") {
     await q(
       `update leads set callback_date = $2, callback_time = $3, updated_at = now() where id = $1`,

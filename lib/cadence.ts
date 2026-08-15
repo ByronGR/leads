@@ -65,6 +65,8 @@ export type Lead = {
   contact_title: string | null;
   phone: string | null;
   linkedin: string | null;   // profile URL, found by find_linkedin.py
+  linkedin_stage: string | null;  // null | 'connect' | 'message'
+  linkedin_at: string | null;
   email: string | null;
   email_confidence: string | null;
   status: string;
@@ -311,4 +313,48 @@ export const REP_FALLBACK = "#8a978f";
 export function repColor(name?: string | null): string {
   if (!name) return REP_FALLBACK;
   return REP_COLORS[name] || REP_FALLBACK;
+}
+
+/* ---------------------------------------------------------------- LinkedIn */
+
+/**
+ * THE LINKEDIN CADENCE (Byron 2026-08-13 — email paused while nearwork.co recovers).
+ *
+ * Deliberately NOT the email cadence. On LinkedIn you cannot message someone until
+ * they accept, so the sequence is gated on their action, not the clock:
+ *
+ *   day 0            connection request + note
+ *   on accept        the real message (this is where the pitch lives)
+ *   +4 business days one follow-up message, then stop
+ *
+ * There is no chasing an unaccepted request — a second request isn't possible, and
+ * LinkedIn throttles accounts that behave like bulk senders.
+ */
+export const LI_FOLLOWUP_BIZDAYS = 4;
+
+export type LinkedInStep = {
+  stage: "connect" | "message" | "followup" | "done";
+  label: string;
+  hint: string;
+  due: Date | null;
+};
+
+export function linkedinStep(l: Lead): LinkedInStep {
+  const at = localDate(l.linkedin_at);
+  if (!l.linkedin_stage) {
+    return { stage: "connect", label: "Send connection request",
+             hint: "Note only — no pitch. The note's job is to earn the accept.",
+             due: startOfToday() };
+  }
+  if (l.linkedin_stage === "connect") {
+    return { stage: "message", label: "Send message once they accept",
+             hint: "Wait for the accept. You can't message before they connect.",
+             due: at };
+  }
+  // Already messaged — one follow-up, then stop.
+  const due = at ? bumpToBizDay(addBizDays(at, LI_FOLLOWUP_BIZDAYS)) : null;
+  if (due && due > startOfToday()) {
+    return { stage: "followup", label: "Follow-up message", hint: "One nudge, then stop.", due };
+  }
+  return { stage: "followup", label: "Follow-up message due", hint: "One nudge, then stop.", due };
 }

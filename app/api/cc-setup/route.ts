@@ -20,6 +20,8 @@ export async function GET(req: Request) {
   // Byron 2026-08-13: LinkedIn is the outreach channel while nearwork.co's email
   // reputation recovers. find_linkedin.py fills this from search.
   await q(`alter table leads add column if not exists linkedin text`);
+  await q(`alter table leads add column if not exists linkedin_stage text`);
+  await q(`alter table leads add column if not exists linkedin_at date`);
   await q(`alter table leads add column if not exists contact_title text`);
   await q(`alter table leads add column if not exists website text`);
   // Lead's UTC offset, so we can render their local clock and the call window in
