@@ -153,3 +153,21 @@ export function linkedinSearch(l: Lead): string {
   const q = [l.contact_name?.split("(")[0].trim(), l.company].filter(Boolean).join(" ");
   return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
 }
+
+/**
+ * Sales Navigator InMail — sent WITHOUT connecting first.
+ * Mirrors outreach_spec.linkedin_inmail. One step instead of two, but Sales Navigator
+ * rations InMails (~50/month), so each one carries the whole pitch.
+ */
+export function linkedinInmail(l: Lead): { subject: string; body: string } {
+  const who = firstName(l);
+  const r = roleOf(l);
+  const rate = quotedRate(l);
+  const pitch = rate
+    ? `The same level runs about ${rate}/mo from Latin America, working your hours.`
+    : `We place professionals from Latin America who work your hours, each one screened against your exact job description before you see them.`;
+  return {
+    subject: `${r} at ${l.company}`,
+    body: `Hi ${who} — I'm Byron from Nearwork.\n\nSaw ${l.company} is hiring for ${r}. ${pitch}\n\nYou pay only once someone is hired, and if it isn't the right fit in the first few months we replace them.\n\nI can send a couple of profiles that fit, no commitment — no call needed. Worth a look?\n\nIf it's not for you, no worries at all — I'd still love to connect. Best of luck!`,
+  };
+}

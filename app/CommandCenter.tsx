@@ -9,7 +9,7 @@ import {
   OwnerDot, StageBadge, TouchDots, Copyable, EmailPanel, SchedulePanel,
   PhoneIcon, MailIcon, CloseIcon, ActionButton,
 } from "./ui";
-import { messageFor, linkedinNote, linkedinMessage, linkedinSearch } from "@/lib/copy";
+import { messageFor, linkedinNote, linkedinMessage, linkedinSearch, linkedinInmail } from "@/lib/copy";
 
 type Activity = { id: number; actor: string; action: string; note: string; ts: string; company: string };
 type Variant = { variant: string; leads: number; sent: number; opened: number; replied: number; reply_rate: number; open_rate: number };
@@ -516,83 +516,144 @@ function CopyBtn({ text, label, primary }: { text: string; label: string; primar
  * lead actually is, so there is never a question of what to send next.
  */
 function LinkedInView({ queue, onOpen, act }: any) {
+  const [filter, setFilter] = useState<"all" | "read" | "waiting" | "ready">("all");
+  const [mode, setMode] = useState<"connect" | "inmail">("connect");
+  const [open, setOpen] = useState<number | null>(null);
   const [q, setQ] = useState("");
-  const rows = queue.filter((l: Lead) => !q || l.company.toLowerCase().includes(q.toLowerCase()));
-  const openers = rows.filter((l: Lead) => l.opened).length;
+
+  // Byron's LinkedIn ceiling is ~25 connection requests a day before the account gets
+  // throttled — a limit with worse consequences than the email one, since you cannot
+  // buy a new LinkedIn history. Showing progress against it is the single most useful
+  // thing on this screen. (Byron 2026-08-13)
+  const DAILY = 25;
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const doneToday = queue.filter((l: Lead) =>
+    String(l.linkedin_at || "").slice(0, 10) === todayISO).length;
+
+  const sets: Record<string, (l: Lead) => boolean> = {
+    all: () => true,
+    read: (l) => !!l.opened,
+    waiting: (l) => l.linkedin_stage === "connect",
+    ready: (l) => !l.linkedin_stage,
+  };
+  const rows = queue
+    .filter(sets[filter])
+    .filter((l: Lead) => !q || l.company.toLowerCase().includes(q.toLowerCase()));
+
+  const CHIPS: [string, string, number][] = [
+    ["all", "All", queue.length],
+    ["read", "Read your email", queue.filter(sets.read).length],
+    ["ready", "Not contacted", queue.filter(sets.ready).length],
+    ["waiting", "Awaiting accept", queue.filter(sets.waiting).length],
+  ];
+
   return (
     <>
       <div className="page-h">
         <div>
           <div className="page-t">LinkedIn</div>
           <div className="page-s">
-            Email is paused. {openers} of these read an email that landed in their spam —
-            those are first, and their note says so.
+            {mode === "connect"
+              ? "Send the connection note. The pitch goes in the message after they accept."
+              : "InMail goes straight out — no connection needed. Sales Navigator only."}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="tabs">
+            <button className={mode === "connect" ? "on" : ""} onClick={() => setMode("connect")}>Connect</button>
+            <button className={mode === "inmail" ? "on" : ""} onClick={() => setMode("inmail")}>InMail</button>
           </div>
         </div>
       </div>
+
+      {/* Today's pace against the safe ceiling. */}
+      <div className="panel" style={{ padding: "12px 16px", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
+          <b>{doneToday}</b><span className="meta">of ~{DAILY} today</span>
+          <div style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--bg-2)" }}>
+            <div style={{ width: `${Math.min(100, (doneToday / DAILY) * 100)}%`, height: "100%",
+                          borderRadius: 3,
+                          background: doneToday >= DAILY ? "#c2410c" : "var(--ok, #12866E)" }} />
+          </div>
+          <span className="meta">
+            {doneToday >= DAILY ? "That's enough for today — more risks the account." : "Safe pace"}
+          </span>
+        </div>
+      </div>
+
       <div className="toolbar">
-        <div className="chips"><div className="chip on">{rows.length} to work</div></div>
+        <div className="chips">
+          {CHIPS.map(([k, label, n]) => (
+            <div key={k} className={"chip" + (filter === k ? " on" : "")}
+                 onClick={() => setFilter(k as any)}>{label} {n}</div>
+          ))}
+        </div>
         <div className="tb-right">
           <input className="search" placeholder="Search company…" value={q}
                  onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
+
       {rows.length ? (
-        <div className="stack">
-          {rows.slice(0, 60).map((l: Lead) => {
+        <div className="list">
+          {rows.slice(0, 80).map((l: Lead) => {
             const step = linkedinStep(l);
-            const note = linkedinNote(l, !!l.opened);
+            const isOpen = open === l.id;
+            const note = linkedinNote(l);
             const msg = linkedinMessage(l);
-            const onConnect = step.stage === "connect";
+            const im = linkedinInmail(l);
+            // Show ONLY the text that is actually due. Rendering every message for
+            // every row is what made the first version a wall of text.
+            const due = mode === "inmail"
+              ? { title: `InMail · ${im.subject}`, text: im.body, cap: 0 }
+              : step.stage === "connect"
+                ? { title: `Connection note · ${note.length}/300`, text: note, cap: 300 }
+                : { title: "Message — they accepted", text: msg, cap: 0 };
+            const action = mode === "inmail"
+              ? { stage: "message", label: "Sent InMail" }
+              : step.stage === "connect"
+                ? { stage: "connect", label: "Sent request" }
+                : { stage: "message", label: "Sent message" };
             return (
-              <div className="panel" key={l.id} style={{ padding: "14px 16px", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700 }}>{l.company}</span>
-                  <span className="meta">{(l.contact_name || "—").split("(")[0].trim()}
-                    {l.contact_title ? ` · ${l.contact_title}` : ""}</span>
+              <div key={l.id} className="leadrow" style={{ display: "block", padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                     onClick={() => setOpen(isOpen ? null : l.id)}>
+                  <span style={{ fontWeight: 600, minWidth: 0 }}>{l.company}</span>
                   {l.opened && <span className="badge f1">read your email</span>}
-                  <span className="meta" style={{ marginLeft: "auto" }}>{l.role}</span>
-                </div>
-
-                <div style={{ margin: "10px 0 12px", fontSize: 12.5, color: "var(--tx-2)" }}>
-                  <b>{step.label}</b>
-                  {step.due && step.stage !== "connect" ? ` · ${fmtDay(step.due)}` : ""} — {step.hint}
-                </div>
-
-                {/* The note earns the accept; the message carries the pitch. Both are
-                    always available, but the one that is DUE is the primary button. */}
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px" }}>
-                    <div className="meta" style={{ marginBottom: 4 }}>
-                      CONNECTION NOTE · {note.length}/300
-                    </div>
-                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{note}</div>
-                  </div>
-                  <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px" }}>
-                    <div className="meta" style={{ marginBottom: 4 }}>MESSAGE — after they accept</div>
-                    <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{msg}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  <a className="btn sm" target="_blank" rel="noreferrer"
-                     href={l.linkedin || linkedinSearch(l)}>
-                    {l.linkedin ? "Open profile" : "Find on LinkedIn"}
-                  </a>
-                  <CopyBtn text={note} label="Copy note" primary={onConnect} />
-                  <CopyBtn text={msg} label="Copy message" primary={!onConnect} />
-                  <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                    {onConnect
-                      ? <button className="btn sm" onClick={() => act(l, { action: "linkedin", stage: "connect" }, "Connection request logged", true)}>Sent request</button>
-                      : <button className="btn sm" onClick={() => act(l, { action: "linkedin", stage: "message" }, "LinkedIn message logged", true)}>Sent message</button>}
-                    <button className="btn sm ghost" onClick={() => onOpen(l)}>Details</button>
+                  {l.linkedin_stage === "connect" && <span className="badge b-Sent">awaiting accept</span>}
+                  <span className="meta" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {(l.contact_name || "—").split("(")[0].trim()} · {l.role}
                   </span>
+                  <span className="meta" style={{ marginLeft: "auto" }}>{isOpen ? "▲" : "▼"}</span>
                 </div>
+
+                {isOpen && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="meta" style={{ marginBottom: 6 }}>{due.title}</div>
+                    <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "10px 12px",
+                                  fontSize: 13, whiteSpace: "pre-wrap" }}>{due.text}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                      <a className="btn sm" target="_blank" rel="noreferrer"
+                         href={l.linkedin || linkedinSearch(l)}>
+                        {l.linkedin ? "Open profile" : "Find on LinkedIn"}
+                      </a>
+                      <CopyBtn text={due.text} label="Copy" primary />
+                      {mode === "inmail" && <CopyBtn text={im.subject} label="Copy subject" />}
+                      <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                        <button className="btn sm" onClick={() =>
+                          act(l, { action: "linkedin", stage: action.stage }, action.label, true)}>
+                          {action.label}
+                        </button>
+                        <button className="btn sm ghost" onClick={() => onOpen(l)}>Details</button>
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
-      ) : <div className="empty"><div className="big">Nothing queued</div>Every open lead has been worked on LinkedIn.</div>}
+      ) : <div className="empty"><div className="big">Nothing here</div>Try another filter.</div>}
     </>
   );
 }
