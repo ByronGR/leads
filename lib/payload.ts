@@ -16,7 +16,7 @@ import { q } from "./db";
 export async function commandCenterData(me: string) {
   const leads = await q(
     `select l.id, l.company, l.owner, l.role, l.contact_name, l.contact_title,
-            l.phone, l.email, l.email_confidence, l.status, coalesce(l.sent_count,0) as sent_count,
+            l.phone, l.linkedin, l.email, l.email_confidence, l.status, coalesce(l.sent_count,0) as sent_count,
             l.tz_offset, coalesce(l.dnc,false) as dnc, l.started, l.last_activity,
             l.callback_date, l.callback_time, l.source, l.ab_variant, l.job_url,
             coalesce(l.website, l.domain) as website, l.gen_subject, l.gen_body,

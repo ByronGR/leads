@@ -98,3 +98,45 @@ export function messageFor(l: Lead): Message {
 
   return { label: "Sequence complete", subject: "", body: "", note: "All three emails have gone out. The call queue carries it from here." };
 }
+
+/* ------------------------------------------------------------------ LinkedIn */
+
+/**
+ * LINKEDIN OUTREACH — TWO STEPS, NOT ONE.
+ *
+ * Byron 2026-08-13, with nearwork.co's email in junk: "We'll be sending them a
+ * connection using a note. Or is there a better way to do this?" There is.
+ *
+ * A connection note is capped at ~300 characters, and free LinkedIn accounts ration
+ * personalised invitations to a handful a month. Cramming a pitch in there also
+ * LOWERS acceptance - it reads as a sales approach before any relationship exists.
+ *
+ * So the note's only job is to earn the accept. The pitch goes in the message AFTER
+ * they accept, where there's no character limit and they've opted in by connecting.
+ *
+ * Mirrors outreach_spec.linkedin_note / linkedin_message. Change both together.
+ */
+export function linkedinNote(l: Lead, openedEmail: boolean): string {
+  const who = firstName(l);
+  const r = roleOf(l);
+  const note = openedEmail
+    ? `Hi ${who} — I emailed you about the ${r} opening at ${l.company} a little while back; I think it landed in spam. Not chasing anything, just thought I'd connect properly.`
+    : `Hi ${who} — saw ${l.company} is hiring for ${r}. I work with US teams hiring in Latin America, so this is squarely my world. Thought I'd connect.`;
+  return note.slice(0, 300);
+}
+
+export function linkedinMessage(l: Lead): string {
+  const who = firstName(l);
+  const r = roleOf(l);
+  const rate = quotedRate(l);
+  const pitch = rate
+    ? `The same level runs about ${rate}/mo from Latin America on your hours.`
+    : `We place professionals from Latin America who work your hours, screened against your exact job description before you see them.`;
+  return `Thanks for connecting, ${who}.\n\nI noticed ${l.company} is hiring for ${r}. ${pitch}\n\nYou pay only once someone is hired, and if it isn't the right fit in the first few months we replace them.\n\nI'd be happy to share a couple of example profiles if you're interested — no call needed. Worth a look?`;
+}
+
+/** LinkedIn search URL for a contact we have no profile URL for. */
+export function linkedinSearch(l: Lead): string {
+  const q = [l.contact_name?.split("(")[0].trim(), l.company].filter(Boolean).join(" ");
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
+}

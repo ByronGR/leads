@@ -17,6 +17,9 @@ export async function GET(req: Request) {
 
   // --- lead fields the Command Center needs on top of the existing schema ---
   await q(`alter table leads add column if not exists phone text`);
+  // Byron 2026-08-13: LinkedIn is the outreach channel while nearwork.co's email
+  // reputation recovers. find_linkedin.py fills this from search.
+  await q(`alter table leads add column if not exists linkedin text`);
   await q(`alter table leads add column if not exists contact_title text`);
   await q(`alter table leads add column if not exists website text`);
   // Lead's UTC offset, so we can render their local clock and the call window in

@@ -64,6 +64,7 @@ export type Lead = {
   contact_name: string | null;
   contact_title: string | null;
   phone: string | null;
+  linkedin: string | null;   // profile URL, found by find_linkedin.py
   email: string | null;
   email_confidence: string | null;
   status: string;
