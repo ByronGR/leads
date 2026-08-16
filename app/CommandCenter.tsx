@@ -522,19 +522,13 @@ function LinkedInView({ queue, onOpen, act }: any) {
   const [open, setOpen] = useState<number | null>(null);
   const [q, setQ] = useState("");
 
-  // Byron's LinkedIn ceiling is ~25 connection requests a day before the account gets
-  // throttled — a limit with worse consequences than the email one, since you cannot
-  // buy a new LinkedIn history. Showing progress against it is the single most useful
-  // thing on this screen. (Byron 2026-08-13)
-  const DAILY = 25;
+  // Byron 2026-08-15: "let's not have a limit on how many people I can contact."
+  // This is a COUNT of what he's done today, not a gate — the earlier progress bar
+  // against ~25 read as a cap and made the queue look limited to 25 people.
   const todayISO = new Date().toISOString().slice(0, 10);
   const doneToday = queue.filter((l: Lead) =>
     String(l.linkedin_at || "").slice(0, 10) === todayISO).length;
 
-  // Byron 2026-08-13: "I don't want 2 SDRs sending the same message to the same
-  // person, that's spamming." So the DEFAULT list is untouched leads only — the moment
-  // anyone logs a connect or a message, it leaves everyone's to-do list. It is not
-  // deleted: "it doesn't mean that we cannot search for that person."
   const sets: Record<string, (l: Lead) => boolean> = {
     all: (l) => !l.linkedin_stage,                    // the to-do list
     read: (l) => !l.linkedin_stage && !!l.opened,
@@ -564,8 +558,8 @@ function LinkedInView({ queue, onOpen, act }: any) {
           <div className="page-t">LinkedIn</div>
           <div className="page-s">
             {mode === "connect"
-              ? "Send the connection note. The pitch goes in the message after they accept."
-              : "InMail goes straight out — no connection needed. Sales Navigator only."}
+              ? "Everyone in the pipeline — emailed or not. Send the connection note; the pitch goes in the message after they accept."
+              : "Everyone in the pipeline. InMail goes straight out — no connection needed. Sales Navigator only."}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -576,20 +570,11 @@ function LinkedInView({ queue, onOpen, act }: any) {
         </div>
       </div>
 
-      {/* Today's pace against the safe ceiling. */}
-      <div className="panel" style={{ padding: "12px 16px", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13 }}>
-          <b>{doneToday}</b><span className="meta">of ~{DAILY} today</span>
-          <div style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--bg-2)" }}>
-            <div style={{ width: `${Math.min(100, (doneToday / DAILY) * 100)}%`, height: "100%",
-                          borderRadius: 3,
-                          background: doneToday >= DAILY ? "#c2410c" : "var(--ok, #12866E)" }} />
-          </div>
-          <span className="meta">
-            {doneToday >= DAILY ? "That's enough for today — more risks the account." : "Safe pace"}
-          </span>
+      {doneToday > 0 && (
+        <div className="meta" style={{ margin: "0 0 12px" }}>
+          {doneToday} sent today
         </div>
-      </div>
+      )}
 
       <div className="toolbar">
         <div className="chips">
@@ -606,7 +591,9 @@ function LinkedInView({ queue, onOpen, act }: any) {
 
       {rows.length ? (
         <div className="list">
-          {rows.slice(0, 80).map((l: Lead) => {
+          {/* No row cap. Byron works the whole list; slicing it made the queue look
+              far smaller than it is. (2026-08-15) */}
+          {rows.map((l: Lead) => {
             const step = linkedinStep(l);
             const isOpen = open === l.id;
             const note = linkedinNote(l);
