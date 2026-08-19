@@ -28,10 +28,11 @@ export async function commandCenterData(me: string) {
   await q(`alter table leads add column if not exists linkedin_at date`).catch(() => {});
   await q(`alter table leads add column if not exists linkedin_by text`).catch(() => {});
   await q(`alter table leads add column if not exists phone text`).catch(() => {});
+  await q(`alter table leads add column if not exists apollo_status text`).catch(() => {});
 
   const leads = await q(
     `select l.id, l.company, l.owner, l.role, l.contact_name, l.contact_title,
-            l.phone, l.linkedin, l.linkedin_stage, l.linkedin_at, l.linkedin_by, l.email, l.email_confidence, l.status, coalesce(l.sent_count,0) as sent_count,
+            l.phone, l.linkedin, l.linkedin_stage, l.linkedin_at, l.linkedin_by, l.apollo_status, l.email, l.email_confidence, l.status, coalesce(l.sent_count,0) as sent_count,
             l.tz_offset, coalesce(l.dnc,false) as dnc, l.started, l.last_activity,
             l.callback_date, l.callback_time, l.source, l.ab_variant, l.job_url,
             coalesce(l.website, l.domain) as website, l.gen_subject, l.gen_body,

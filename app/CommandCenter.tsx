@@ -160,6 +160,13 @@ export default function CommandCenter({ initial }: { initial: Payload }) {
         if (st === "No" || st === "Replied") return false;
         // NOTE: touched leads stay IN the queue so search can still find them. It is
         // the default FILTER below that hides them from the to-do list, not this.
+        //
+        // ONE CHANNEL AT A TIME (Byron 2026-08-19: "we do the cold reach and the rest
+        // in LinkedIn"). A lead Apollo is ACTIVELY sequencing belongs to the email
+        // channel; working it on LinkedIn at the same time is two approaches from the
+        // same company in the same week, which reads as pressure, not persistence.
+        // Once the sequence finishes with no reply, it drops back here.
+        if (String(l.apollo_status || "").toLowerCase() === "active") return false;
         return !!(l.contact_name || "").trim();             // need a person to find
       })
       .sort((a, b) => {
@@ -558,7 +565,7 @@ function LinkedInView({ queue, onOpen, act }: any) {
           <div className="page-t">LinkedIn</div>
           <div className="page-s">
             {mode === "connect"
-              ? "Everyone in the pipeline — emailed or not. Send the connection note; the pitch goes in the message after they accept."
+              ? "Everyone Apollo isn't already emailing. Send the connection note; the pitch goes in the message after they accept."
               : "Everyone in the pipeline. InMail goes straight out — no connection needed. Sales Navigator only."}
           </div>
         </div>

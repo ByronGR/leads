@@ -68,6 +68,7 @@ export type Lead = {
   linkedin_stage: string | null;  // null | 'connect' | 'message'
   linkedin_at: string | null;
   linkedin_by: string | null;   // which rep took it — two SDRs must not double-touch
+  apollo_status: string | null; // active | finished | paused — Apollo owns the email channel
   email: string | null;
   email_confidence: string | null;
   status: string;

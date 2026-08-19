@@ -47,8 +47,8 @@ export async function POST(req: Request) {
       }
       await q(
         `insert into leads
-           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source, ab_variant, phone, linkedin)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+           (company, domain, owner, role, email, email_confidence, status, sent_count, why_now, job_url, last_activity, opened, opened_at, first_name, contact_name, lead_date, gen_subject, gen_body, source, ab_variant, phone, linkedin, apollo_status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
          on conflict (company) do update set
            owner            = case when leads.owner_locked then leads.owner
                                    else coalesce(nullif(excluded.owner, ''), leads.owner) end,
@@ -66,6 +66,7 @@ export async function POST(req: Request) {
           -- number a human already entered; only fill in a blank.
           phone            = coalesce(nullif(leads.phone, ''), excluded.phone),
           linkedin         = coalesce(nullif(leads.linkedin, ''), excluded.linkedin),
+          apollo_status    = excluded.apollo_status,
            email            = coalesce(nullif(leads.email, ''), excluded.email),
            email_confidence = excluded.email_confidence,
            sent_count       = greatest(leads.sent_count, excluded.sent_count),
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
           l.opened ?? false, l.opened_at ?? null,
           l.first_name ?? null, l.contact_name ?? null, l.lead_date ?? null,
           l.gen_subject ?? null, l.gen_body ?? null, l.source ?? null,
-          l.ab_variant ?? null, l.phone ?? null, l.linkedin ?? null,
+          l.ab_variant ?? null, l.phone ?? null, l.linkedin ?? null, l.apollo_status ?? null,
         ]
       );
       n++;
